@@ -1,0 +1,63 @@
+services:
+  # Backend Flask API
+  backend:
+    container_name: retrocloud_backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - ./emulatorjs:/emulatorjs # Manter o volume para o backend acessar os arquivos, mesmo sem o container do emulador
+    environment:
+      - FLASK_ENV=development
+      - SECRET_KEY=your_secret_key_here_change_in_production
+      - DATABASE_URL=sqlite:///database.db
+    # depends_on:
+    #   - emulatorjs # Removido temporariamente
+    networks:
+      - retrocloud_network
+    restart: unless-stopped
+
+  # Frontend React
+  frontend:
+    container_name: retrocloud_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://backend:5000
+    depends_on:
+      - backend
+    networks:
+      - retrocloud_network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    container_name: retrocloud_nginx
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - backend
+      - frontend
+      # - emulatorjs # Removido temporariamente
+    networks:
+      - retrocloud_network
+    restart: unless-stopped
+
+networks:
+  retrocloud_network:
+    driver: bridge
+
