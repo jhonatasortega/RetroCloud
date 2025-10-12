@@ -25,7 +25,7 @@ Plataforma web para jogar ROMs de videogames retro diretamente no navegador, com
 
 ```bash
 cd /home/pi
-git clone <seu-repositorio> retrocloud
+git clone <RetroCloud> retrocloud
 cd retrocloud
 ```
 
