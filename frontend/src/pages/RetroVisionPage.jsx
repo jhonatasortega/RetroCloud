@@ -107,7 +107,7 @@ export default function RetroVisionPage({ onExit }) {
     { icon: '⏻',  label: 'Sair da conta',     action: () => { logout(); navigate('/login') } },
   ]
 
-  // Poll gamepad com repeat suave ao segurar
+  // Poll gamepad com repeat correto ao segurar
   const poll = useCallback(() => {
     const gps = navigator.getGamepads?.() || []
     const now  = performance.now()
@@ -117,55 +117,78 @@ export default function RetroVisionPage({ onExit }) {
       const prev  = prevBtns.current[gp.index] || {}
       const pAxes = prevAxes.current[gp.index] || {}
 
-      const pressed  = (i) => gp.buttons[i]?.pressed
-      const just     = (i) => pressed(i) && !prev[i]
-      // Repeat ao segurar: delay 400ms, repeat 150ms
-      const heldFire = (i) => {
-        if (!pressed(i)) { heldTime.current[i] = 0; return false }
-        if (just(i))     { heldTime.current[i] = now; return false }
-        return heldTime.current[i] && (now - heldTime.current[i]) > 400 &&
-               (now - (heldTime.current[`r${i}`] || 0)) > 150 &&
-               (heldTime.current[`r${i}`] = now)
+      const isDown   = (i) => !!gp.buttons[i]?.pressed
+      const wasDown  = (i) => !!prev[i]
+      const justDown = (i) => isDown(i) && !wasDown(i)
+      const justUp   = (i) => !isDown(i) && wasDown(i)
+
+      // Repeat: primeiro disparo imediato, depois 400ms delay, depois 130ms repeat
+      const repeatFire = (i) => {
+        if (!isDown(i)) {
+          if (heldTime.current[i]) heldTime.current[i] = 0
+          return false
+        }
+        if (justDown(i)) {
+          heldTime.current[i] = now
+          heldTime.current[`r${i}`] = now
+          return true  // disparo imediato
+        }
+        const held = now - heldTime.current[i]
+        const sinceRepeat = now - (heldTime.current[`r${i}`] || 0)
+        if (held > 400 && sinceRepeat > 130) {
+          heldTime.current[`r${i}`] = now
+          return true
+        }
+        return false
       }
 
       const ax = gp.axes[0] || 0
       const ay = gp.axes[1] || 0
-      const axJustL = ax < -0.5 && !(pAxes.ax < -0.5)
-      const axJustR = ax >  0.5 && !(pAxes.ax >  0.5)
-      const ayJustU = ay < -0.5 && !(pAxes.ay < -0.5)
-      const ayJustD = ay >  0.5 && !(pAxes.ay >  0.5)
+
+      // Repeat para analógico
+      const axRepeatL = ax < -0.5
+      const axRepeatR = ax >  0.5
+      const axKey = axRepeatL ? 'axL' : axRepeatR ? 'axR' : null
+      const axFire = (dir) => {
+        const k = dir === 'L' ? 'axL' : 'axR'
+        const active = dir === 'L' ? axRepeatL : axRepeatR
+        if (!active) { heldTime.current[k] = 0; return false }
+        if (!(dir === 'L' ? (pAxes.ax < -0.5) : (pAxes.ax > 0.5))) {
+          heldTime.current[k] = now; heldTime.current[`r${k}`] = now; return true
+        }
+        const held = now - (heldTime.current[k] || 0)
+        const sinceRepeat = now - (heldTime.current[`r${k}`] || 0)
+        if (held > 400 && sinceRepeat > 130) { heldTime.current[`r${k}`] = now; return true }
+        return false
+      }
 
       if (menuOpen) {
-        if (just(13) || ayJustD || heldFire(13))
-          setMenuIdx(i => Math.min(i + 1, menuItems.length - 1))
-        if (just(12) || ayJustU || heldFire(12))
-          setMenuIdx(i => Math.max(i - 1, 0))
-        if (just(0)) menuItems[menuIdx]?.action()   // A confirma
-        if (just(1)) setMenuOpen(false)              // B fecha
-        if (MENU_BTNS.some(just)) setMenuOpen(false) // Guide fecha
+        if (repeatFire(13)) setMenuIdx(i => Math.min(i + 1, menuItems.length - 1))
+        if (repeatFire(12)) setMenuIdx(i => Math.max(i - 1, 0))
+        if (justDown(0)) menuItems[menuIdx]?.action()
+        if (justDown(1)) setMenuOpen(false)
+        if (MENU_BTNS.some(justDown)) setMenuOpen(false)
       } else {
-        // LB/RB: troca sistema
-        if (just(4) || heldFire(4)) setSysIdx(i => Math.max(i - 1, 0))
-        if (just(5) || heldFire(5)) setSysIdx(i => Math.min(i + 1, systems.length - 1))
+        // LB/RB: troca sistema com repeat
+        if (repeatFire(4)) setSysIdx(i => Math.max(i - 1, 0))
+        if (repeatFire(5)) setSysIdx(i => Math.min(i + 1, systems.length - 1))
 
-        // D-pad + analógico: navega jogos
-        const goLeft  = just(14) || axJustL || heldFire(14)
-        const goRight = just(15) || axJustR || heldFire(15)
-        if (goLeft)  setGameIdx(i => Math.max(i - 1, 0))
-        if (goRight) setGameIdx(i => Math.min(i + 1, Math.max(filteredGames.length - 1, 0)))
+        // D-pad esq/dir + analógico: navega jogos com repeat
+        if (repeatFire(14) || axFire('L')) setGameIdx(i => Math.max(i - 1, 0))
+        if (repeatFire(15) || axFire('R')) setGameIdx(i => Math.min(i + 1, Math.max(filteredGames.length - 1, 0)))
 
         // D-pad cima/baixo: troca sistema
-        if (just(12) || ayJustU) setSysIdx(i => Math.max(i - 1, 0))
-        if (just(13) || ayJustD) setSysIdx(i => Math.min(i + 1, systems.length - 1))
+        if (justDown(12) || (ay < -0.5 && !(pAxes.ay < -0.5))) setSysIdx(i => Math.max(i - 1, 0))
+        if (justDown(13) || (ay >  0.5 && !(pAxes.ay >  0.5))) setSysIdx(i => Math.min(i + 1, systems.length - 1))
 
-        // A: lança jogo direto
-        if (just(0)) launchCurrent()
+        // A: lança jogo
+        if (justDown(0)) launchCurrent()
 
-        // Guide (botão PS/Xbox): menu RetroVision
-        if (MENU_BTNS.some(b => just(b))) { setMenuOpen(true); setMenuIdx(0) }
+        // Guide: abre menu
+        if (MENU_BTNS.some(justDown)) { setMenuOpen(true); setMenuIdx(0) }
 
-        // B: pede confirmação para sair
-        if (just(1)) {
+        // B: confirmação de saída
+        if (justDown(1)) {
           if (confirmExit) confirmExitNow()
           else tryExit()
         }
@@ -175,7 +198,7 @@ export default function RetroVisionPage({ onExit }) {
       prevAxes.current[gp.index] = { ax, ay }
     }
     animRef.current = requestAnimationFrame(poll)
-  }, [menuOpen, menuIdx, systems, filteredGames, launchCurrent, menuItems, onExit])
+  }, [menuOpen, menuIdx, systems, filteredGames, launchCurrent, menuItems, confirmExit, confirmExitNow, tryExit])
 
   useEffect(() => {
     animRef.current = requestAnimationFrame(poll)
@@ -308,8 +331,12 @@ export default function RetroVisionPage({ onExit }) {
                     border: isCenter ? `2px solid ${meta.glow}50` : '1px solid #ffffff08',
                   }}>
                     {game.thumb ? (
-                      <img src={game.thumb} alt={game.nome}
-                           style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img
+                        src={Math.abs(offset) <= 2 ? game.thumb : undefined}
+                        data-src={game.thumb}
+                        alt={game.nome}
+                        loading="lazy"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <div style={{
                         width: '100%', height: '100%',

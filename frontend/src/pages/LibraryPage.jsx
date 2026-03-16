@@ -15,7 +15,7 @@ export default function LibraryPage() {
   const [search, setSearch]   = useState('')
   const [system, setSystem]   = useState(ALL)
   const [page, setPage]       = useState(1)
-  const PER_PAGE = 40
+  const PER_PAGE = 24  // menos cards por página = menos requests simultâneos
 
   useEffect(() => {
     api.systems()

@@ -12,7 +12,7 @@ const CORE_MAP = {
   nes: 'nes',
 }
 
-const MENU_BTNS = [8, 9, 16] // Select, Start, Guide
+const MENU_BTNS = [16] // Apenas Guide/PS — Start e Select ficam livres pro jogo
 
 export default function PlayerPage() {
   const { id }   = useParams()
@@ -63,7 +63,7 @@ export default function PlayerPage() {
   useEffect(() => {
     if (game && playInfo && phase === 'loading') {
       setPhase('transition')
-      setTimeout(() => setPhase('playing'), 3000)
+      setTimeout(() => setPhase('playing'), 1800)
     }
   }, [game, playInfo])
 
@@ -118,17 +118,21 @@ export default function PlayerPage() {
     `
     document.head.appendChild(style)
 
-    // Carrega o script do EmulatorJS via CDN
+    // Aguarda o container estar no DOM e carrega o script
     const existing = document.getElementById('emulatorjs-script')
     if (existing) existing.remove()
 
-    const script = document.createElement('script')
-    script.id  = 'emulatorjs-script'
-    script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js'
-    document.body.appendChild(script)
+    // Pequeno delay garante que o div#emulator-container está montado
+    const loadTimer = setTimeout(() => {
+      const script = document.createElement('script')
+      script.id  = 'emulatorjs-script'
+      script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js'
+      document.body.appendChild(script)
+    }, 100)
 
     // Limpa o EmulatorJS ao sair da página
     return () => {
+      clearTimeout(loadTimer)
       cancelAnimationFrame(animFrameRef.current)
       const s = document.getElementById('emulatorjs-script')
       if (s) s.remove()
@@ -288,6 +292,9 @@ function XboxTransition({ game }) {
 
 function GameMenu({ game, onClose, onBack, onFullscreen }) {
   const [selected, setSelected] = useState(0)
+  const prevRef = useRef({})
+  const animRef = useRef(null)
+
   const items = [
     { icon: '▶', label: 'Continuar jogando', action: onClose },
     { icon: '⊞', label: 'Tela cheia',         action: onFullscreen },
@@ -296,6 +303,8 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
     { icon: '🔄', label: 'Reiniciar jogo',      action: () => { window.EJS_emulator?.restart?.();   onClose() } },
     { icon: '←',  label: 'Sair do jogo',        action: onBack },
   ]
+
+  // Teclado
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'ArrowDown')  setSelected(s => Math.min(s + 1, items.length - 1))
@@ -305,7 +314,61 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selected])
+  }, [selected, items])
+
+  // Controle — poll próprio do menu (o poll do player está pausado com menu aberto)
+  useEffect(() => {
+    const poll = () => {
+      const gps = navigator.getGamepads?.() || []
+      for (const gp of gps) {
+        if (!gp) continue
+        const prev = prevRef.current[gp.index] || {}
+        const just = (i) => gp.buttons[i]?.pressed && !prev[i]
+        const ay = gp.axes[1] || 0
+        const prevAy = prevRef.current[`ay${gp.index}`] || 0
+
+        if (just(12) || (ay < -0.5 && prevAy >= -0.5)) setSelected(s => Math.max(s - 1, 0))
+        if (just(13) || (ay >  0.5 && prevAy <=  0.5)) setSelected(s => Math.min(s + 1, items.length - 1))
+        if (just(0))  items[selected]?.action()   // A confirma
+        if (just(1) || just(16)) onClose()         // B ou Guide fecha
+
+        prevRef.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+        prevRef.current[`ay${gp.index}`] = ay
+      }
+      animRef.current = requestAnimationFrame(poll)
+    }
+    animRef.current = requestAnimationFrame(poll)
+    return () => cancelAnimationFrame(animRef.current)
+  }, [selected, items, onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fadein"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-steam-card border border-steam-border rounded-2xl overflow-hidden w-80 shadow-2xl">
+        <div className="px-6 py-4 border-b border-steam-border bg-steam-panel flex items-center gap-3">
+          {game?.thumb ? <img src={game.thumb} alt="" className="w-10 h-12 object-cover rounded" /> : <span className="text-2xl">🎮</span>}
+          <div>
+            <p className="text-white font-medium text-sm">{game?.nome}</p>
+            <p className="text-steam-muted text-xs">{game?.sistema?.toUpperCase()}</p>
+          </div>
+        </div>
+        <div className="py-2">
+          {items.map((item, i) => (
+            <button key={i} onClick={item.action} onMouseEnter={() => setSelected(i)}
+              className={`w-full flex items-center gap-4 px-6 py-3 text-sm transition-colors text-left
+                ${selected === i ? 'bg-steam-accent text-steam-bg font-medium' : 'text-steam-text hover:bg-steam-panel'}`}>
+              <span className="w-5 text-center">{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="px-6 py-3 border-t border-steam-border">
+          <p className="text-steam-muted text-xs text-center">↑↓ · A confirmar · B / Guide fechar</p>
+        </div>
+      </div>
+    </div>
+  )
+}
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center animate-fadein"
