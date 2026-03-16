@@ -178,6 +178,8 @@ function RomsTab() {
               <input
                 type="file"
                 multiple
+                webkitdirectory=""
+                directory=""
                 accept=".bin,.iso,.cue,.sfc,.smc,.nes,.gba,.gbc,.gb,.n64,.z64,.md,.gen"
                 onChange={importFolder}
                 disabled={importing}

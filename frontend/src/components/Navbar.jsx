@@ -25,7 +25,7 @@ export default function Navbar() {
   }, [])
 
   const isActive = (path) => location.pathname === path
-  const mode = MODE_CONFIG[inputMode] || MODE_CONFIG.mouse
+  const mode = MODE_CONFIG[inputMode] || MODE_CONFIG['desktop']
 
   return (
     <nav className="bg-steam-card border-b border-steam-border px-4 flex items-center justify-between sticky top-0 z-50 h-14">
