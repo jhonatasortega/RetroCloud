@@ -133,7 +133,6 @@ export default function PlayerPage() {
     // Limpa o EmulatorJS ao sair da página
     return () => {
       clearTimeout(loadTimer)
-      cancelAnimationFrame(animFrameRef.current)
       const s = document.getElementById('emulatorjs-script')
       if (s) s.remove()
       const style = document.getElementById('ejs-hide-ui')
@@ -148,16 +147,28 @@ export default function PlayerPage() {
     }
   }, [phase, game, playInfo])
 
-  // Poll gamepad — só intercepta o Guide/PS para abrir menu
-  // Quando menu está fechado, o EmulatorJS recebe os inputs diretamente
+  // Poll gamepad — só intercepta o Guide para abrir menu
+  // Ignora inputs nos primeiros 600ms (evita B do RetroVision vazar)
+  const mountTimeRef = useRef(Date.now())
+
   const pollGamepad = useCallback(() => {
+    // Flush: ignora todos os inputs nos primeiros 600ms após montar
+    const sinceMount = Date.now() - mountTimeRef.current
+    if (sinceMount < 600) {
+      // Só atualiza prev para não ter "just pressed" falso depois
+      const gps = navigator.getGamepads?.() || []
+      for (const gp of gps) {
+        if (!gp) continue
+        prevBtns.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+      }
+      animRef.current = requestAnimationFrame(pollGamepad)
+      return
+    }
+
     const gps = navigator.getGamepads?.() || []
     for (const gp of gps) {
       if (!gp) continue
       const prev = prevBtns.current[gp.index] || {}
-
-      // Só verifica botões de menu — NÃO consome outros botões
-      // Isso garante que o EmulatorJS receba D-pad, A, B, etc.
       gp.buttons.forEach((btn, i) => {
         const justPressed = btn.pressed && !prev[i]
         if (justPressed && MENU_BTNS.includes(i)) {
@@ -233,7 +244,13 @@ export default function PlayerPage() {
               <div
                 id="emulator-container"
                 ref={containerRef}
-                style={{ width: '100%', height: showTouch ? 'calc(100vh - 208px)' : 'calc(100vh - 48px)' }}
+                style={{
+                  width: '100%',
+                  height: showTouch ? 'calc(100vh - 208px)' : 'calc(100vh - 48px)',
+                  minHeight: 400,
+                  display: 'block',
+                  background: '#000',
+                }}
               />
             ) : (
               <StreamingStub />

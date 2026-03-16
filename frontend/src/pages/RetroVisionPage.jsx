@@ -173,9 +173,43 @@ export default function RetroVisionPage({ onExit }) {
         if (repeatFire(4)) setSysIdx(i => Math.max(i - 1, 0))
         if (repeatFire(5)) setSysIdx(i => Math.min(i + 1, systems.length - 1))
 
-        // D-pad esq/dir + analógico: navega jogos com repeat
-        if (repeatFire(14) || axFire('L')) setGameIdx(i => Math.max(i - 1, 0))
-        if (repeatFire(15) || axFire('R')) setGameIdx(i => Math.min(i + 1, Math.max(filteredGames.length - 1, 0)))
+        // D-pad esq/dir + analógico: navega jogos
+        // Ao segurar por mais de 1.5s, pula para a próxima letra
+        const goL = repeatFire(14) || axFire('L')
+        const goR = repeatFire(15) || axFire('R')
+
+        if (goL || goR) {
+          setGameIdx(cur => {
+            const dir   = goR ? 1 : -1
+            const next  = Math.max(0, Math.min(cur + dir, filteredGames.length - 1))
+            // Verifica se deve pular para próxima letra (segurado > 1.5s)
+            const heldMs = Date.now() - (heldTime.current._navStart || Date.now())
+            if (heldMs > 1500) {
+              const curLetter = filteredGames[cur]?.nome?.[0]?.toUpperCase() || ''
+              if (goR) {
+                const jumpIdx = filteredGames.findIndex((g, i) =>
+                  i > cur && g.nome?.[0]?.toUpperCase() > curLetter
+                )
+                return jumpIdx >= 0 ? jumpIdx : filteredGames.length - 1
+              } else {
+                const prevLetter = filteredGames[cur]?.nome?.[0]?.toUpperCase() || ''
+                for (let i = cur - 1; i >= 0; i--) {
+                  if (filteredGames[i]?.nome?.[0]?.toUpperCase() < prevLetter) {
+                    // Volta para o primeiro da letra anterior
+                    const letter = filteredGames[i]?.nome?.[0]?.toUpperCase()
+                    const firstOfLetter = filteredGames.findIndex(g => g.nome?.[0]?.toUpperCase() === letter)
+                    return firstOfLetter >= 0 ? firstOfLetter : i
+                  }
+                }
+                return 0
+              }
+            }
+            return next
+          })
+          if (!heldTime.current._navStart) heldTime.current._navStart = Date.now()
+        } else {
+          heldTime.current._navStart = 0
+        }
 
         // D-pad cima/baixo: troca sistema
         if (justDown(12) || (ay < -0.5 && !(pAxes.ay < -0.5))) setSysIdx(i => Math.max(i - 1, 0))
