@@ -75,6 +75,7 @@ export default function RetroVisionPage({ onExit }) {
   const prevBtns  = useRef({})
   const prevAxes  = useRef({})
   const heldTime  = useRef({})
+  const navStart  = useRef(0)  // timestamp início de navegação contínua
   const currentGameRef = useRef(null)
 
   // Confirmação de saída
@@ -186,18 +187,18 @@ export default function RetroVisionPage({ onExit }) {
 
         if (goL) {
           setGameIdx(cur => {
-            const held = now - (heldTime.current._navStart || now)
+            const held = now - (navStart.current || now)
             if (held > 1500 && cur > 0) {
               const curLetter = filteredGames[cur]?.nome?.[0]?.toUpperCase() || ''
               for (let i = cur - 1; i >= 0; i--) {
                 const l = filteredGames[i]?.nome?.[0]?.toUpperCase()
                 if (l < curLetter) {
                   const first = filteredGames.findIndex(g => g.nome?.[0]?.toUpperCase() === l)
-                  heldTime.current._navStart = now
+                  navStart.current = now
                   return first >= 0 ? first : i
                 }
               }
-              heldTime.current._navStart = now
+              navStart.current = now
               return 0
             }
             return Math.max(0, cur - 1)
@@ -205,18 +206,18 @@ export default function RetroVisionPage({ onExit }) {
         }
         if (goR) {
           setGameIdx(cur => {
-            const held = now - (heldTime.current._navStart || now)
+            const held = now - (navStart.current || now)
             if (held > 1500 && cur < filteredGames.length - 1) {
               const curLetter = filteredGames[cur]?.nome?.[0]?.toUpperCase() || ''
               const jumpIdx = filteredGames.findIndex((g, i) => i > cur && (g.nome?.[0]?.toUpperCase() || '') > curLetter)
-              heldTime.current._navStart = now
+              navStart.current = now
               return jumpIdx >= 0 ? jumpIdx : filteredGames.length - 1
             }
             return Math.min(cur + 1, filteredGames.length - 1)
           })
         }
-        if (goL || goR) { if (!heldTime.current._navStart) heldTime.current._navStart = now }
-        else { heldTime.current._navStart = 0 }
+        if (goL || goR) { if (!navStart.current) navStart.current = now }
+        else { navStart.current = 0 }
 
         if (justDown(12) || (gp.axes[1] < -0.5 && !(pAxes.ay < -0.5))) setSysIdx(i => Math.max(i - 1, 0))
         if (justDown(13) || (gp.axes[1] >  0.5 && !(pAxes.ay >  0.5))) setSysIdx(i => Math.min(i + 1, systems.length - 1))

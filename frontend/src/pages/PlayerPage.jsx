@@ -21,6 +21,15 @@ export default function PlayerPage() {
   const animRef      = useRef(null)
   const prevBtns     = useRef({})
   const mountTime    = useRef(Date.now())
+
+  // Inicializa prevBtns com estado atual — evita detectar botões já pressionados como "just pressed"
+  useEffect(() => {
+    const gps = navigator.getGamepads?.() || []
+    for (const gp of gps) {
+      if (!gp) continue
+      prevBtns.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+    }
+  }, [])
   const emulationMode = import.meta.env.VITE_EMULATION_MODE || 'local'
 
   const [game, setGame]         = useState(null)
@@ -122,8 +131,12 @@ export default function PlayerPage() {
       const script = document.createElement('script')
       script.id  = 'emulatorjs-script'
       script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js'
+      script.onload = () => {
+        // Dispara resize após script carregar — resolve "classList of null"
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 300)
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 800)
+      }
       document.body.appendChild(script)
-      setEjsLoaded(true)
     }
 
     init()
