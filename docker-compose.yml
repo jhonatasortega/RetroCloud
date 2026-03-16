@@ -50,6 +50,7 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=America/Sao_Paulo
+      - SUBFOLDER=/emulator/
     volumes:
       - ./emulatorjs/config:/config
       - ./emulatorjs/data:/data

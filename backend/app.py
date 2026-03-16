@@ -15,9 +15,12 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['MAX_CONTENT_LENGTH'] = 600 * 1024 * 1024  # 600 MB para ISOs de PS1
     app.config['UPLOAD_FOLDER'] = '/app/static/uploads'
-    app.config['THEGAMESDB_API_KEY'] = os.getenv('THEGAMESDB_API_KEY', '')
-    app.config['SCREENSCRAPER_USER'] = os.getenv('SCREENSCRAPER_USER', '')
-    app.config['SCREENSCRAPER_PASS'] = os.getenv('SCREENSCRAPER_PASS', '')
+    app.config['THEGAMESDB_API_KEY']    = os.getenv('THEGAMESDB_API_KEY', '')
+    app.config['SCREENSCRAPER_USER']    = os.getenv('SCREENSCRAPER_USER', '')
+    app.config['SCREENSCRAPER_PASS']    = os.getenv('SCREENSCRAPER_PASS', '')
+    app.config['IGDB_CLIENT_ID']        = os.getenv('IGDB_CLIENT_ID', '')
+    app.config['IGDB_CLIENT_SECRET']    = os.getenv('IGDB_CLIENT_SECRET', '')
+    app.config['STEAMGRIDDB_API_KEY']   = os.getenv('STEAMGRIDDB_API_KEY', '')
     app.config['EMULATION_MODE'] = os.getenv('EMULATION_MODE', 'local')
 
     CORS(app, resources={r"/api/*": {"origins": "*"}})

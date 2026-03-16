@@ -195,45 +195,89 @@ function RomsTab() {
         </div>
       </Card>
 
-      {/* Lista */}
-      <Card title={`ROMs cadastradas (${games.length})`}>
-        {loading ? <p className="text-steam-muted text-sm">Carregando...</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-steam-border text-steam-muted text-xs uppercase">
-                  <th className="text-left py-2 pr-4">Nome</th>
-                  <th className="text-left py-2 pr-4">Sistema</th>
-                  <th className="text-left py-2 pr-4">Capa</th>
-                  <th className="text-left py-2">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {games.map(g => (
-                  <tr key={g.id} className="border-b border-steam-border/50 hover:bg-steam-panel/50 transition-colors">
-                    <td className="py-2.5 pr-4 text-steam-text">{g.nome}</td>
-                    <td className="py-2.5 pr-4">
-                      <span className="text-xs bg-steam-border px-2 py-0.5 rounded text-steam-muted">
-                        {g.sistema?.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="py-2.5 pr-4">
-                      {g.thumb
-                        ? <img src={g.thumb} alt="" className="w-8 h-10 object-cover rounded" />
-                        : <span className="text-steam-muted text-xs">sem capa</span>}
-                    </td>
-                    <td className="py-2.5 flex gap-2 flex-wrap">
-                      <button onClick={() => fetchThumb(g.id)} className="text-xs text-steam-accent hover:underline">buscar capa</button>
-                      <button onClick={() => deleteRom(g.id, g.nome)} className="text-xs text-red-400 hover:underline">deletar</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      {/* Lista com abas por sistema e busca */}
+      <RomsList games={games} loading={loading} onFetchThumb={fetchThumb} onDelete={deleteRom} />
     </div>
+  )
+}
+
+function RomsList({ games, loading, onFetchThumb, onDelete }) {
+  const [search, setSearch]   = useState('')
+  const [sistema, setSistema] = useState('todos')
+
+  const sistemas = ['todos', ...Array.from(new Set(games.map(g => g.sistema?.toLowerCase()).filter(Boolean))).sort()]
+
+  const filtered = games.filter(g => {
+    const matchSys = sistema === 'todos' || g.sistema?.toLowerCase() === sistema
+    const matchSearch = !search || g.nome?.toLowerCase().includes(search.toLowerCase())
+    return matchSys && matchSearch
+  })
+
+  return (
+    <Card title={`ROMs cadastradas (${filtered.length} / ${games.length})`}>
+      {/* Busca + abas */}
+      <div className="mb-4 space-y-3">
+        <input
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar por nome..."
+          className={`w-full bg-steam-bg border border-steam-border rounded px-3 py-2
+            text-steam-text placeholder-steam-muted focus:border-steam-accent focus:outline-none text-sm`}
+        />
+        <div className="flex gap-1.5 flex-wrap">
+          {sistemas.map(s => (
+            <button key={s} onClick={() => setSistema(s)}
+              className={`px-3 py-1 rounded text-xs font-medium transition-colors
+                ${sistema === s
+                  ? 'bg-steam-accent text-steam-bg'
+                  : 'bg-steam-bg border border-steam-border text-steam-muted hover:text-steam-text'}`}>
+              {s === 'todos' ? `Todos (${games.length})` : `${s.toUpperCase()} (${games.filter(g => g.sistema?.toLowerCase() === s).length})`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? <p className="text-steam-muted text-sm">Carregando...</p> : (
+        filtered.length === 0
+          ? <p className="text-steam-muted text-sm py-4 text-center">Nenhuma ROM encontrada.</p>
+          : (
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-steam-card">
+                  <tr className="border-b border-steam-border text-steam-muted text-xs uppercase">
+                    <th className="text-left py-2 pr-4">Nome</th>
+                    <th className="text-left py-2 pr-4">Sistema</th>
+                    <th className="text-left py-2 pr-4">Capa</th>
+                    <th className="text-left py-2">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(g => (
+                    <tr key={g.id} className="border-b border-steam-border/50 hover:bg-steam-panel/50 transition-colors">
+                      <td className="py-2 pr-4 text-steam-text">{g.nome}</td>
+                      <td className="py-2 pr-4">
+                        <span className="text-xs bg-steam-border px-2 py-0.5 rounded text-steam-muted">
+                          {g.sistema?.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4">
+                        {g.thumb
+                          ? <img src={g.thumb} alt="" className="w-7 h-9 object-cover rounded" />
+                          : <span className="text-steam-muted text-xs">—</span>}
+                      </td>
+                      <td className="py-2 flex gap-2 flex-wrap">
+                        <button onClick={() => onFetchThumb(g.id)} className="text-xs text-steam-accent hover:underline">capa</button>
+                        <button onClick={() => onDelete(g.id, g.nome)} className="text-xs text-red-400 hover:underline">deletar</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+      )}
+    </Card>
   )
 }
 
