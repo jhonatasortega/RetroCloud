@@ -45,7 +45,7 @@ services:
 
   emulatorjs:
     container_name: retrocloud_emulatorjs
-    image: lscr.io/linuxserver/emulatorjs:latest
+    image: ghcr.io/linuxserver/emulatorjs:1.9.2-ls173@sha256:81db557b263e32e57e1df08b786f1fec64f1684799125ec05d212e6450601eb3
     environment:
       - PUID=1000
       - PGID=1000
