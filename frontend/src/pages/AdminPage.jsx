@@ -119,7 +119,25 @@ function RomsTab() {
     }
   }
 
-  const fetchAll = async () => {
+  const uploadThumb = async (id, file) => {
+    if (!file) return
+    const fd = new FormData()
+    fd.append('thumb', file)
+    fd.append('nome', '')
+    fd.append('sistema', games.find(g => g.id === id)?.sistema || '')
+    // Usa endpoint de update de capa
+    try {
+      const token = localStorage.getItem('retrocloud_token')
+      const res = await fetch(`/api/admin/roms/${id}/thumb`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      })
+      const d = await res.json()
+      setMsg(d.message || 'Capa atualizada!')
+      load()
+    } catch { setMsg('Erro ao enviar capa.') }
+  }
     setFetchingAll(true)
     try {
       const d = await api.fetchAllThumbs()
@@ -205,12 +223,12 @@ function RomsTab() {
       </Card>
 
       {/* Lista com abas por sistema e busca */}
-      <RomsList games={games} loading={loading} onFetchThumb={fetchThumb} onDelete={deleteRom} />
+      <RomsList games={games} loading={loading} onFetchThumb={fetchThumb} onDelete={deleteRom} onUploadThumb={uploadThumb} />
     </div>
   )
 }
 
-function RomsList({ games, loading, onFetchThumb, onDelete }) {
+function RomsList({ games, loading, onFetchThumb, onDelete, onUploadThumb }) {
   const [search, setSearch]   = useState('')
   const [sistema, setSistema] = useState('todos')
 
@@ -275,10 +293,15 @@ function RomsList({ games, loading, onFetchThumb, onDelete }) {
                           ? <img src={g.thumb} alt="" className="w-7 h-9 object-cover rounded" />
                           : <span className="text-steam-muted text-xs">—</span>}
                       </td>
-                      <td className="py-2 flex gap-2 flex-wrap">
-                        <button onClick={() => onFetchThumb(g.id)} className="text-xs text-steam-accent hover:underline">capa</button>
-                        <button onClick={() => onDelete(g.id, g.nome)} className="text-xs text-red-400 hover:underline">deletar</button>
-                      </td>
+                    <td className="py-2 flex gap-2 flex-wrap items-center">
+                      <button onClick={() => onFetchThumb(g.id)} className="text-xs text-steam-accent hover:underline">buscar capa</button>
+                      <label className="text-xs text-green-400 hover:underline cursor-pointer">
+                        enviar capa
+                        <input type="file" accept="image/*" className="hidden"
+                          onChange={e => onUploadThumb(g.id, e.target.files[0])} />
+                      </label>
+                      <button onClick={() => onDelete(g.id, g.nome)} className="text-xs text-red-400 hover:underline">deletar</button>
+                    </td>
                     </tr>
                   ))}
                 </tbody>

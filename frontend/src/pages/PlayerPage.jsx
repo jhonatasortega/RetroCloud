@@ -87,8 +87,7 @@ export default function PlayerPage() {
     window.EJS_backgroundColor = '#000000'
     window.EJS_language      = 'en-US'
 
-    // Esconde todos os controles visuais — usamos o menu próprio do RetroCloud
-    window.EJS_controls      = { 'menubar': false }
+    // Esconde TODA a UI do EmulatorJS — usamos o menu próprio do RetroCloud
     window.EJS_Buttons = {
       playPause:    false,
       restart:      false,
@@ -101,9 +100,23 @@ export default function PlayerPage() {
       gamepad:      false,
       cheat:        false,
       volume:       false,
-      saveSavFiles: true,   // mantém save automático
+      saveSavFiles: true,
       contextMenu:  false,
     }
+
+    // CSS para esconder barra inferior e qualquer overlay do EmulatorJS
+    const style = document.createElement('style')
+    style.id = 'ejs-hide-ui'
+    style.textContent = `
+      #emulator-container .ejs_menu_bar,
+      #emulator-container .ejs_volume_bar,
+      #emulator-container [class*="menu"],
+      #emulator-container [class*="toolbar"],
+      #emulator-container [class*="controls"],
+      #emulator-container .ejs_ctx_menu { display: none !important; }
+      #emulator-container canvas { display: block !important; }
+    `
+    document.head.appendChild(style)
 
     // Carrega o script do EmulatorJS via CDN
     const existing = document.getElementById('emulatorjs-script')
@@ -262,7 +275,10 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
   const items = [
     { icon: '▶', label: 'Continuar jogando', action: onClose },
     { icon: '⊞', label: 'Tela cheia',         action: onFullscreen },
-    { icon: '←', label: 'Sair do jogo',        action: onBack },
+    { icon: '💾', label: 'Salvar estado',       action: () => { window.EJS_emulator?.saveState?.(); onClose() } },
+    { icon: '📂', label: 'Carregar estado',     action: () => { window.EJS_emulator?.loadState?.(); onClose() } },
+    { icon: '🔄', label: 'Reiniciar jogo',      action: () => { window.EJS_emulator?.restart?.();   onClose() } },
+    { icon: '←',  label: 'Sair do jogo',        action: onBack },
   ]
   useEffect(() => {
     const onKey = (e) => {

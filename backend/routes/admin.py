@@ -130,6 +130,33 @@ def update_config(current_user):
         db.session.rollback()
         return jsonify({'message': 'Erro ao atualizar configuração', 'error': str(e)}), 500
 
+@admin_bp.route('/roms/<int:rom_id>/thumb', methods=['POST'])
+@admin_required
+def upload_thumb(current_user, rom_id):
+    """Upload manual de thumbnail para uma ROM."""
+    rom = Rom.query.get(rom_id)
+    if not rom:
+        return jsonify({'message': 'ROM não encontrada'}), 404
+
+    thumb_file = request.files.get('thumb')
+    if not thumb_file:
+        return jsonify({'message': 'Arquivo não fornecido'}), 400
+
+    if not allowed_file(thumb_file.filename, ALLOWED_IMAGE_EXTENSIONS):
+        return jsonify({'message': 'Formato não permitido. Use: png, jpg, gif, webp'}), 400
+
+    thumb_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'thumbs')
+    os.makedirs(thumb_dir, exist_ok=True)
+    ext = thumb_file.filename.rsplit('.', 1)[1].lower()
+    filename = f'rom_{rom_id}.{ext}'
+    full_path = os.path.join(thumb_dir, filename)
+    thumb_file.save(full_path)
+
+    rom.thumb = f'/static/uploads/thumbs/{filename}'
+    db.session.commit()
+    return jsonify({'message': 'Capa atualizada!', 'thumb': rom.thumb}), 200
+
+
 @admin_bp.route('/roms/upload', methods=['POST'])
 @admin_required
 def upload_rom(current_user):
