@@ -76,16 +76,27 @@ def clean_name(nome):
 
 def _download(url, save_path):
     try:
-        r = requests.get(url, timeout=20, stream=True,
+        r = requests.get(url, timeout=30, stream=True,
                          headers={'User-Agent': 'RetroCloud/1.0'})
         r.raise_for_status()
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        with open(save_path, 'wb') as f:
+        tmp_path = save_path + '.tmp'
+        size = 0
+        with open(tmp_path, 'wb') as f:
             for chunk in r.iter_content(8192):
                 f.write(chunk)
+                size += len(chunk)
+        # Verifica tamanho mínimo (imagem válida > 5KB)
+        if size < 5120:
+            os.remove(tmp_path)
+            log.debug(f'Arquivo muito pequeno ({size}b), descartado: {url}')
+            return False
+        os.replace(tmp_path, save_path)
         return True
     except Exception as e:
         log.debug(f'Download falhou {url}: {e}')
+        if os.path.exists(save_path + '.tmp'):
+            os.remove(save_path + '.tmp')
         return False
 
 

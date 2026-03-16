@@ -31,10 +31,17 @@ export default function BigPicturePage({ onExit }) {
   const [launchGame, setLaunchGame] = useState(null)
   const [menuOpen, setMenuOpen]     = useState(false)
   const [menuIdx, setMenuIdx]       = useState(0)
+  const [introPhase, setIntroPhase] = useState('in') // 'in' | 'done'
 
   const animRef  = useRef(null)
   const prevBtns = useRef({})
   const prevAxes = useRef({})
+
+  // Intro cinematográfica — dura 1.8s
+  useEffect(() => {
+    const t = setTimeout(() => setIntroPhase('done'), 1800)
+    return () => clearTimeout(t)
+  }, [])
 
   // Carrega jogos
   useEffect(() => {
@@ -120,6 +127,36 @@ export default function BigPicturePage({ onExit }) {
   if (!systems.length) return (
     <div className="fixed inset-0 bg-black flex items-center justify-center">
       <p className="text-white animate-pulse text-lg">Carregando biblioteca...</p>
+    </div>
+  )
+
+  // Animação de intro cinematográfica
+  if (introPhase === 'in') return (
+    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center"
+         style={{ animation: 'bpFadeIn 0.4s ease forwards' }}>
+      <div style={{ animation: 'bpLogoIn 0.6s cubic-bezier(0.34,1.56,0.64,1) 0.3s both' }}>
+        <div style={{ fontSize: 72, textAlign: 'center', marginBottom: 16 }}>🎮</div>
+        <h1 style={{
+          color: '#fff', fontSize: 42, fontWeight: 800, letterSpacing: 6,
+          textAlign: 'center', textTransform: 'uppercase',
+          textShadow: '0 0 40px rgba(102,192,244,0.8)',
+        }}>RetroCloud</h1>
+        <div style={{
+          height: 2, background: 'linear-gradient(to right, transparent, #66c0f4, transparent)',
+          marginTop: 12, animation: 'bpLine 0.8s ease 0.8s both',
+          transform: 'scaleX(0)', transformOrigin: 'center',
+        }} />
+        <p style={{
+          color: '#66c0f4', fontSize: 13, textAlign: 'center', marginTop: 10,
+          letterSpacing: 4, textTransform: 'uppercase', opacity: 0,
+          animation: 'bpFadeIn 0.5s ease 1.2s forwards',
+        }}>Big Picture</p>
+      </div>
+      <style>{`
+        @keyframes bpFadeIn { from{opacity:0} to{opacity:1} }
+        @keyframes bpLogoIn { from{opacity:0;transform:scale(0.8)} to{opacity:1;transform:scale(1)} }
+        @keyframes bpLine   { from{transform:scaleX(0)} to{transform:scaleX(1)} }
+      `}</style>
     </div>
   )
 

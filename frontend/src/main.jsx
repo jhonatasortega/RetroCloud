@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useInputMode } from '@/hooks/useInputMode'
 import Navbar from '@/components/Navbar'
@@ -34,7 +34,8 @@ function AdminRoute({ children }) {
   return children
 }
 
-function AppWithBigPicture() {
+// Precisa estar dentro do BrowserRouter para usar useNavigate
+function AppRoutes() {
   const { user } = useAuth()
   const [bigPicture, setBigPicture] = useState(false)
 
@@ -45,7 +46,6 @@ function AppWithBigPicture() {
     const onDisconnect = () => setBigPicture(false)
     window.addEventListener('gamepadconnected',    onConnect)
     window.addEventListener('gamepaddisconnected', onDisconnect)
-    // Verifica controle já conectado
     if ([...(navigator.getGamepads?.() || [])].some(Boolean)) setBigPicture(true)
     return () => {
       window.removeEventListener('gamepadconnected',    onConnect)
@@ -58,31 +58,29 @@ function AppWithBigPicture() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={
-          <PrivateRoute>
-            <>
-              <Navbar onBigPicture={() => setBigPicture(true)} />
-              <LibraryPage />
-            </>
-          </PrivateRoute>
-        } />
-        <Route path="/play/:id" element={
-          <PrivateRoute><PlayerPage /></PrivateRoute>
-        } />
-        <Route path="/admin" element={
-          <AdminRoute>
-            <>
-              <Navbar />
-              <AdminPage />
-            </>
-          </AdminRoute>
-        } />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={
+        <PrivateRoute>
+          <>
+            <Navbar onBigPicture={() => setBigPicture(true)} />
+            <LibraryPage />
+          </>
+        </PrivateRoute>
+      } />
+      <Route path="/play/:id" element={
+        <PrivateRoute><PlayerPage /></PrivateRoute>
+      } />
+      <Route path="/admin" element={
+        <AdminRoute>
+          <>
+            <Navbar />
+            <AdminPage />
+          </>
+        </AdminRoute>
+      } />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }
 
@@ -90,7 +88,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AuthProvider>
       <InputModeProvider>
-        <AppWithBigPicture />
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
       </InputModeProvider>
     </AuthProvider>
   </React.StrictMode>
