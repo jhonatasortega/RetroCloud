@@ -147,6 +147,8 @@ function RomsTab() {
       load()
     } catch { setMsg('Erro ao enviar capa.') }
   }
+
+  const fetchAll = async () => {
     setFetchingAll(true)
     try {
       const d = await api.fetchAllThumbs()
