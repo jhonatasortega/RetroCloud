@@ -8,80 +8,88 @@ const CORE_MAP = {
   gba: 'gba', gbc: 'gbc', gb: 'gb',
   megadrive: 'segaMD', genesis: 'segaMD', md: 'segaMD', nes: 'nes',
 }
-const MENU_BTNS = [16]
+const GUIDE_BTN = 16
 
 export default function PlayerPage() {
   const { id } = useParams()
-  const animRef  = useRef(null)
-  const prevBtns = useRef({})
+  const animRef    = useRef(null)
+  const prevBtns   = useRef({})
+  const ejsStarted = useRef(false)  // guard contra duplo init
 
-  const [game, setGame]           = useState(null)
-  const [playInfo, setPlay]       = useState(null)
-  const [menuOpen, setMenuOpen]   = useState(false)
+  const [game, setGame]             = useState(null)
+  const [playInfo, setPlay]         = useState(null)
+  const [menuOpen, setMenuOpen]     = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [gamepadConnected, setGamepadConnected] = useState(false)
-  const [showTouch, setShowTouch] = useState(false)
-  const [error, setError]         = useState('')
+  const [showTouch, setShowTouch]   = useState(false)
+  const [error, setError]           = useState('')
   const fromRV = useRef(sessionStorage.getItem('from_rv') === '1')
 
   const goBack = useCallback(() => {
     try { window.EJS_emulator?.pause?.() } catch {}
     sessionStorage.removeItem('from_rv')
-    // Usa replace para não acumular histórico
     window.location.replace(fromRV.current ? '/?rv=1' : '/')
   }, [])
 
+  // Detecta controle, touch e fullscreen
   useEffect(() => {
     const checkGp = () => setGamepadConnected([...(navigator.getGamepads?.() || [])].some(Boolean))
-    window.addEventListener('gamepadconnected', checkGp)
-    window.addEventListener('gamepaddisconnected', checkGp)
-    checkGp()
     const updateTouch = () => {
-      const hasTouch   = document.body.dataset.inputMode === 'touch'
+      const isTouch   = document.body.dataset.inputMode === 'touch'
       const hasGamepad = [...(navigator.getGamepads?.() || [])].some(Boolean)
-      setShowTouch(hasTouch && !hasGamepad)
+      setShowTouch(isTouch && !hasGamepad)
     }
+    const onFs = () => setFullscreen(!!document.fullscreenElement)
+
+    window.addEventListener('gamepadconnected',    checkGp)
+    window.addEventListener('gamepaddisconnected', checkGp)
+    document.addEventListener('fullscreenchange',  onFs)
+    checkGp()
     updateTouch()
+
     const obs = new MutationObserver(updateTouch)
     obs.observe(document.body, { attributes: true, attributeFilter: ['data-input-mode'] })
-    const fsChange = () => setFullscreen(!!document.fullscreenElement)
-    document.addEventListener('fullscreenchange', fsChange)
+
     return () => {
-      window.removeEventListener('gamepadconnected', checkGp)
+      window.removeEventListener('gamepadconnected',    checkGp)
       window.removeEventListener('gamepaddisconnected', checkGp)
+      document.removeEventListener('fullscreenchange',  onFs)
       obs.disconnect()
-      document.removeEventListener('fullscreenchange', fsChange)
     }
   }, [])
 
+  // Carrega dados — seta tudo de uma vez para evitar double render
   useEffect(() => {
     Promise.all([api.game(id), api.play(id)])
-      .then(([gd, pd]) => { setGame(gd.game); setPlay(pd) })
+      .then(([gd, pd]) => {
+        setGame(gd.game)
+        setPlay(pd)
+      })
       .catch(e => setError(e.message))
   }, [id])
 
-  // Inicia EmulatorJS — garante que não carrega duas vezes
+  // Inicia EmulatorJS — uma única vez graças ao guard ejsStarted
   useEffect(() => {
     if (!game || !playInfo) return
+    if (ejsStarted.current) return  // GUARD: não inicia duas vezes
+    ejsStarted.current = true
 
     const sysKey  = game.sistema?.toLowerCase()
     const core    = CORE_MAP[sysKey] || sysKey
     const romFile = playInfo.emulator_url
       ? `/roms/${sysKey}/${playInfo.emulator_url.split('/').pop()}` : ''
 
-    // Remove instâncias anteriores completamente
+    // Limpa instância anterior
     document.getElementById('emulatorjs-script')?.remove()
     document.getElementById('ejs-hide-ui')?.remove()
     try { window.EJS_emulator?.pause?.() } catch {}
-    // Limpa todas as variáveis EJS_ para evitar "already declared"
-    Object.keys(window).filter(k => k.startsWith('EJS_') || k === 'EJS_STORAGE').forEach(k => {
-      try { delete window[k] } catch {}
-    })
+    Object.keys(window).filter(k => k.startsWith('EJS_') || k === 'EJS_STORAGE')
+      .forEach(k => { try { delete window[k] } catch {} })
 
     let tries = 0
     const init = () => {
       const el = document.getElementById('emulator-container')
-      if (!el || el.offsetWidth === 0 || el.offsetHeight === 0) {
+      if (!el || el.offsetWidth === 0) {
         if (tries++ < 30) setTimeout(init, 100)
         return
       }
@@ -121,30 +129,39 @@ export default function PlayerPage() {
     setTimeout(init, 200)
 
     return () => {
+      ejsStarted.current = false
       document.getElementById('emulatorjs-script')?.remove()
       document.getElementById('ejs-hide-ui')?.remove()
       try { window.EJS_emulator?.pause?.() } catch {}
     }
   }, [game, playInfo])
 
-  // Inicializa prevBtns com estado atual — evita B vazar do RetroVision
+  // Inicializa prevBtns com estado ATUAL — evita botões vazarem do RetroVision
   useEffect(() => {
-    const gps = navigator.getGamepads?.() || []
-    for (const gp of gps) {
-      if (!gp) continue
-      prevBtns.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+    const snapshot = () => {
+      const gps = navigator.getGamepads?.() || []
+      for (const gp of gps) {
+        if (!gp) continue
+        prevBtns.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+      }
     }
+    // Tira snapshot imediato e 300ms depois (garante capturar botão ainda pressionado)
+    snapshot()
+    const t = setTimeout(snapshot, 300)
+    return () => clearTimeout(t)
   }, [])
 
+  // Poll — GUIDE abre/fecha menu. Detecta só na DESCIDA (justPressed)
   const pollGamepad = useCallback(() => {
     const gps = navigator.getGamepads?.() || []
     for (const gp of gps) {
       if (!gp) continue
       const prev     = prevBtns.current[gp.index] || {}
       const newState = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
-      gp.buttons.forEach((btn, i) => {
-        if (btn.pressed && !prev[i] && MENU_BTNS.includes(i)) setMenuOpen(m => !m)
-      })
+      // justPressed = estava solto, agora está pressionado
+      if (newState[GUIDE_BTN] && !prev[GUIDE_BTN]) {
+        setMenuOpen(m => !m)
+      }
       prevBtns.current[gp.index] = newState
     }
     animRef.current = requestAnimationFrame(pollGamepad)
@@ -172,7 +189,6 @@ export default function PlayerPage() {
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {/* Barra superior — oculta em fullscreen */}
       {!fullscreen && (
         <div className="flex items-center justify-between px-4 py-2.5 bg-steam-card border-b border-steam-border">
           <div className="flex items-center gap-3">
@@ -185,7 +201,7 @@ export default function PlayerPage() {
           </div>
           <div className="flex items-center gap-2">
             {gamepadConnected && (
-              <span className="text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded">🕹 Controle</span>
+              <span className="text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded">🕹</span>
             )}
             <button onClick={() => setMenuOpen(true)}
               className="text-steam-muted hover:text-steam-accent text-xs px-3 py-1.5 border border-steam-border rounded">
@@ -199,7 +215,6 @@ export default function PlayerPage() {
         </div>
       )}
 
-      {/* Área do emulador */}
       <div id="player-wrap" className="flex-1 relative bg-black">
         <div id="emulator-container"
           style={{
@@ -208,15 +223,15 @@ export default function PlayerPage() {
             minHeight: 400, display: 'block', background: '#000',
           }} />
 
-        {/* Botão flutuante em fullscreen */}
+        {/* Botões flutuantes em fullscreen — dentro do player-wrap para aparecer em fullscreen */}
         {fullscreen && (
-          <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 9999, display: 'flex', gap: 8 }}>
+          <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 9999, display: 'flex', gap: 8 }}>
             <button onClick={() => setMenuOpen(true)}
-              style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '8px 14px', fontSize: 18, cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+              style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '8px 14px', fontSize: 18, cursor: 'pointer' }}>
               ☰
             </button>
             <button onClick={toggleFullscreen}
-              style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '8px 14px', fontSize: 16, cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+              style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '8px 14px', fontSize: 16, cursor: 'pointer' }}>
               ✕
             </button>
           </div>
@@ -224,7 +239,7 @@ export default function PlayerPage() {
 
         {gamepadConnected && !menuOpen && <ControlHint />}
 
-        {/* Menu DENTRO do player-wrap — aparece em fullscreen */}
+        {/* Menu dentro do player-wrap — aparece em fullscreen */}
         {menuOpen && (
           <GameMenu game={game}
             onClose={() => setMenuOpen(false)}
@@ -244,39 +259,46 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
   const animRef = useRef(null)
 
   const items = [
-    { icon: '▶', label: 'Continuar',      action: onClose },
-    { icon: '⊞', label: 'Tela cheia',     action: onFullscreen },
-    { icon: '💾', label: 'Salvar estado',  action: () => { window.EJS_emulator?.saveState?.(); onClose() } },
-    { icon: '📂', label: 'Carregar estado',action: () => { window.EJS_emulator?.loadState?.(); onClose() } },
-    { icon: '🔄', label: 'Reiniciar',      action: () => { window.EJS_emulator?.restart?.(); onClose() } },
-    { icon: '←',  label: 'Sair do jogo',  action: onBack },
+    { icon: '▶', label: 'Continuar',       action: onClose },
+    { icon: '⊞', label: 'Tela cheia',      action: onFullscreen },
+    { icon: '💾', label: 'Salvar estado',   action: () => { window.EJS_emulator?.saveState?.(); onClose() } },
+    { icon: '📂', label: 'Carregar estado', action: () => { window.EJS_emulator?.loadState?.(); onClose() } },
+    { icon: '🔄', label: 'Reiniciar',       action: () => { window.EJS_emulator?.restart?.(); onClose() } },
+    { icon: '←',  label: 'Sair do jogo',   action: onBack },
   ]
 
   useEffect(() => {
     const fn = (e) => {
-      if (e.key === 'ArrowDown')  setSelected(s => Math.min(s+1, items.length-1))
-      if (e.key === 'ArrowUp')    setSelected(s => Math.max(s-1, 0))
-      if (e.key === 'Enter')      items[selected]?.action()
-      if (e.key === 'Escape')     onClose()
+      if (e.key === 'ArrowDown') setSelected(s => Math.min(s+1, items.length-1))
+      if (e.key === 'ArrowUp')   setSelected(s => Math.max(s-1, 0))
+      if (e.key === 'Enter')     items[selected]?.action()
+      if (e.key === 'Escape')    onClose()
     }
     window.addEventListener('keydown', fn)
     return () => window.removeEventListener('keydown', fn)
   }, [selected, items, onClose])
 
   useEffect(() => {
+    // Inicializa prev com estado atual para não disparar no mount
+    const gps = navigator.getGamepads?.() || []
+    for (const gp of gps) {
+      if (!gp) continue
+      prevRef.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+    }
+
     const poll = () => {
-      const gps = navigator.getGamepads?.() || []
-      for (const gp of gps) {
+      const gps2 = navigator.getGamepads?.() || []
+      for (const gp of gps2) {
         if (!gp) continue
         const prev = prevRef.current[gp.index] || {}
         const just = (i) => gp.buttons[i]?.pressed && !prev[i]
-        const ay = gp.axes[1] || 0
-        const pay = prevRef.current[`ay${gp.index}`] || 0
-        if (just(12)||(ay<-0.5&&pay>=-0.5)) setSelected(s=>Math.max(s-1,0))
-        if (just(13)||(ay>0.5&&pay<=0.5))   setSelected(s=>Math.min(s+1,items.length-1))
+        const ay   = gp.axes[1] || 0
+        const pay  = prevRef.current[`ay${gp.index}`] || 0
+        if (just(12) || (ay < -0.5 && pay >= -0.5)) setSelected(s => Math.max(s-1, 0))
+        if (just(13) || (ay >  0.5 && pay <=  0.5)) setSelected(s => Math.min(s+1, items.length-1))
         if (just(0)) items[selected]?.action()
-        if (just(1)||just(16)) onClose()
-        prevRef.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i)=>[i,b.pressed]))
+        if (just(1) || just(GUIDE_BTN)) onClose()
+        prevRef.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
         prevRef.current[`ay${gp.index}`] = ay
       }
       animRef.current = requestAnimationFrame(poll)
@@ -286,7 +308,7 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
   }, [selected, items, onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center"
+    <div className="absolute inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-steam-card border border-steam-border rounded-2xl overflow-hidden w-80 shadow-2xl">
         <div className="px-6 py-4 border-b border-steam-border bg-steam-panel flex items-center gap-3">
@@ -315,7 +337,10 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
 
 function ControlHint() {
   const [visible, setVisible] = useState(true)
-  useEffect(() => { const t = setTimeout(() => setVisible(false), 4000); return () => clearTimeout(t) }, [])
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(false), 4000)
+    return () => clearTimeout(t)
+  }, [])
   if (!visible) return null
   return (
     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/70 text-steam-muted
