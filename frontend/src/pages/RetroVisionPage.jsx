@@ -77,7 +77,8 @@ export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
   const prevBtns   = useRef({})
   const prevAxes   = useRef({})
   const heldRef    = useRef({})   // timers de repeat por botão
-  const navStart   = useRef(0)    // para skip de letra
+  const navStart    = useRef(0)    // para skip de letra
+  const touchStartX = useRef(0)   // para swipe mobile
 
   // Confirmação de saída
   const tryExit = useCallback(() => { if (!tvMode) { setConfirmExit(true); setConfirmSel(0) } }, [tvMode])
@@ -229,21 +230,17 @@ export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
         repeatFire(5, () => setSysIdx(i => i + 1))
 
         // D-pad esq/dir + analógico — navega com repeat e skip de letra
+        const PAGE = 20
         const goLeft = () => {
           setGameIdx(cur => {
             const games = filteredGamesRef.current
             const held = now - (navStart.current || now)
-            if (held > 1500 && cur > 0) {
-              const curL = games[cur]?.nome?.[0]?.toUpperCase() || ''
-              for (let i = cur - 1; i >= 0; i--) {
-                const l = games[i]?.nome?.[0]?.toUpperCase()
-                if (l && l < curL) {
-                  const first = games.findIndex(g => g.nome?.[0]?.toUpperCase() === l)
-                  navStart.current = now
-                  return first >= 0 ? first : i
-                }
-              }
-              navStart.current = now; return 0
+            if (held > 800) {
+              // Pula para início do grupo anterior de 20
+              const page = Math.floor(cur / PAGE)
+              const target = Math.max(0, (page - 1) * PAGE)
+              navStart.current = now
+              return target
             }
             return Math.max(0, cur - 1)
           })
@@ -252,11 +249,12 @@ export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
           setGameIdx(cur => {
             const games = filteredGamesRef.current
             const held = now - (navStart.current || now)
-            if (held > 1500 && cur < games.length - 1) {
-              const curL = games[cur]?.nome?.[0]?.toUpperCase() || ''
-              const idx  = games.findIndex((g, i) => i > cur && (g.nome?.[0]?.toUpperCase() || '') > curL)
+            if (held > 800) {
+              // Pula para início do próximo grupo de 20
+              const page = Math.floor(cur / PAGE)
+              const target = Math.min(games.length - 1, (page + 1) * PAGE)
               navStart.current = now
-              return idx >= 0 ? idx : games.length - 1
+              return target
             }
             return Math.min(cur + 1, games.length - 1)
           })
@@ -357,7 +355,15 @@ export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
       {/* Carrossel — só renderiza cards visíveis */}
       <div className="relative z-10 flex items-center justify-center"
            style={{ height: 'calc(100vh - 210px)', perspective: '1200px' }}
-           onClick={handleCarouselClick}>
+           onClick={handleCarouselClick}
+           onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX }}
+           onTouchEnd={(e) => {
+             const dx = e.changedTouches[0].clientX - touchStartX.current
+             if (Math.abs(dx) > 40) {
+               if (dx < 0) setGameIdx(i => Math.min(i+1, filteredGames.length-1))
+               else        setGameIdx(i => Math.max(i-1, 0))
+             }
+           }}>
         {filteredGames.length === 0 ? (
           <p style={{ color: '#ffffff30' }}>Nenhum jogo neste sistema</p>
         ) : (
