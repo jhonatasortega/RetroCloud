@@ -32,24 +32,11 @@ export default function GameCard({ game, onClick, tabIndex = 0 }) {
       className="game-card focus-gamepad text-left w-full bg-steam-card border border-steam-border
                  rounded-lg overflow-hidden group animate-fadein"
     >
-      {/* Capa */}
-      <div className="aspect-[3/4] bg-steam-bg overflow-hidden relative">
-        {game.thumb ? (
-          <img
-            src={game.thumb}
-            alt={game.nome}
-            className="game-card-img w-full h-full object-cover"
-            loading="lazy"
-            onError={(e) => { e.target.parentNode.innerHTML = '<div class="w-full h-full flex items-center justify-center text-4xl">🎮</div>' }}
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-3">
-            <span className="text-4xl">🎮</span>
-            <span className="text-steam-muted text-xs text-center leading-tight">{game.nome}</span>
-          </div>
-        )}
-        {/* Badge do sistema */}
-        <span className={`absolute top-2 left-2 text-xs font-bold px-2 py-0.5 rounded ${sysColor}`}>
+      {/* Capa — thumbs desativadas temporariamente */}
+      <div className="aspect-[3/4] bg-steam-bg overflow-hidden relative flex flex-col items-center justify-center gap-2 p-3">
+        <span className="text-4xl">🎮</span>
+        <span className="text-steam-muted text-xs text-center leading-tight">{game.nome}</span>
+        <span className={`text-xs font-bold px-2 py-0.5 rounded ${sysColor}`}>
           {sysLabel}
         </span>
       </div>

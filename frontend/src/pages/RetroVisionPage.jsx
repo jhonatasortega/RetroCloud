@@ -40,12 +40,7 @@ const CarouselCard = memo(function CarouselCard({ game, offset, meta, isCenter }
         border: isCenter ? `2px solid ${meta.glow}50` : '1px solid #ffffff08',
         background: '#111',
       }}>
-        {game.thumb ? (
-          <img src={game.thumb} alt={game.nome} loading="lazy" decoding="async"
-               onError={(e) => { e.target.style.display='none' }}
-               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        ) : (
-          <div style={{
+        <div style={{
             width: '100%', height: '100%',
             background: `linear-gradient(135deg, ${meta.color}30, #000)`,
             display: 'flex', flexDirection: 'column',
@@ -54,7 +49,6 @@ const CarouselCard = memo(function CarouselCard({ game, offset, meta, isCenter }
             <span style={{ fontSize: 36 }}>{meta.emoji}</span>
             <span style={{ color: '#fff', fontSize: 11, textAlign: 'center', fontWeight: 600, lineHeight: 1.3 }}>{game.nome}</span>
           </div>
-        )}
       </div>
     </div>
   )
@@ -316,12 +310,7 @@ export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
       {/* Fundo */}
       <div className="absolute inset-0 pointer-events-none transition-all duration-700"
            style={{ background: `radial-gradient(ellipse 80% 60% at 50% 35%, ${meta.glow}15 0%, transparent 70%)` }} />
-      {currentGame?.thumb && (
-        <div className="absolute inset-0 pointer-events-none" style={{
-          backgroundImage: `url(${currentGame.thumb})`, backgroundSize: 'cover',
-          backgroundPosition: 'center', filter: 'blur(60px) saturate(1.5)', opacity: 0.06,
-        }} />
-      )}
+      {/* fundo desfocado desativado */}
 
       {/* Sistemas */}
       <div className="relative z-10 pt-5 pb-1">
@@ -398,7 +387,7 @@ export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
       {/* Launch */}
       {launching && currentGame && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ animation: 'rvBlack 0.6s forwards', background: 'rgba(0,0,0,0)' }}>
-          {currentGame.thumb && <img src={currentGame.thumb} alt="" style={{ width: 240, height: 320, objectFit: 'cover', borderRadius: 16, animation: 'rvCard 0.6s forwards', boxShadow: `0 0 80px ${meta.glow}` }} />}
+          <div style={{ width: 240, height: 320, borderRadius: 16, background: `linear-gradient(135deg, ${meta.color}, #000)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 80, animation: 'rvCard 0.6s forwards' }}>{meta.emoji}</div>
           <style>{`
             @keyframes rvBlack { to{background:rgba(0,0,0,0.98)} }
             @keyframes rvCard  { to{transform:scale(1.2);opacity:0} }

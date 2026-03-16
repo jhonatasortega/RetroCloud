@@ -290,7 +290,7 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
       style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-steam-card border border-steam-border rounded-2xl overflow-hidden w-80 shadow-2xl">
         <div className="px-6 py-4 border-b border-steam-border bg-steam-panel flex items-center gap-3">
-          {game?.thumb ? <img src={game.thumb} alt="" className="w-10 h-12 object-cover rounded" /> : <span className="text-2xl">🎮</span>}
+          <span className="text-2xl">🎮</span>
           <div>
             <p className="text-white font-medium text-sm">{game?.nome}</p>
             <p className="text-steam-muted text-xs">{game?.sistema?.toUpperCase()}</p>
