@@ -1,12 +1,14 @@
 """
-Scraper de capas do RetroCloud.
-Fonte primária: Internet Archive (gratuito, sem conta, sem API key).
-Fontes opcionais: ScreenScraper, TheGamesDB, SteamGridDB (se configuradas no .env).
+Scraper de capas — sem API key, sem conta.
 
-Fluxo:
-  1. Ao cadastrar ROM → busca em background automaticamente
-  2. Diariamente → varre ROMs sem capa e tenta novamente
-  3. Manual → admin pode tentar com nome alternativo
+Estratégia:
+  1. Coleções fixas do Archive.org por sistema (mais confiável)
+  2. ScreenScraper (se credenciais configuradas)
+  3. TheGamesDB / SteamGridDB (se API key configurada)
+
+Roda:
+  - Em background ao cadastrar ROM nova
+  - Diariamente via ThumbScheduler
 """
 
 import os, re, time, logging, threading
@@ -14,29 +16,62 @@ import requests
 
 log = logging.getLogger('thumb_scraper')
 
-ARCHIVE_COLLECTIONS = {
-    'snes':      'coversdb-snes',
-    'n64':       'coversdb-n64',
-    'ps1':       'coversdb-psx',
-    'psx':       'coversdb-psx',
-    'megadrive': 'coversdb-genesis',
-    'genesis':   'coversdb-genesis',
-    'md':        'coversdb-genesis',
-    'gba':       'coversdb-gba',
-    'gbc':       'coversdb-gbc',
-    'gb':        'coversdb-gb',
-    'nes':       'coversdb-nes',
+# Coleções do Archive.org com estrutura conhecida por sistema
+# Formato: (identifier, padrão de arquivo, tipo)
+ARCHIVE_SOURCES = {
+    'snes': [
+        # near-snes-scans-png: pasta "Nome do Jogo/box/front.png"
+        ('near-snes-scans-png',   '{nome}/box/front.png',           'path'),
+        # foxboxuk: "Nome do Jogo (USA).cover.png"
+        ('foxboxuk',              '{nome} (USA).cover.png',         'path'),
+        ('foxboxuk',              '{nome} (Europe).cover.png',      'path'),
+        ('foxboxuk',              '{nome}.cover.png',               'path'),
+        # GameScanner-SNES: "Nome do Jogo 01.jpg"
+        ('GameScanner-SNES',      '{nome} 01.jpg',                  'path'),
+    ],
+    'megadrive': [
+        ('segaboxarts',           '{nome} (USA).jpg',               'search'),
+        ('GameScanner-Genesis',   '{nome} 01.jpg',                  'path'),
+    ],
+    'genesis': [
+        ('segaboxarts',           '{nome} (USA).jpg',               'search'),
+    ],
+    'md': [
+        ('segaboxarts',           '{nome} (USA).jpg',               'search'),
+    ],
+    'n64': [
+        ('near-n64-scans-png',    '{nome}/box/front.png',           'path'),
+        ('N64BoxArt',             '{nome} (USA).jpg',               'search'),
+    ],
+    'ps1': [
+        ('psx-covers',            '{nome} (USA).jpg',               'search'),
+        ('PlayStation-BoxArt',    '{nome}.jpg',                     'search'),
+    ],
+    'psx': [
+        ('psx-covers',            '{nome} (USA).jpg',               'search'),
+    ],
+    'gba': [
+        ('gba-box-art',           '{nome} (USA).jpg',               'search'),
+    ],
+    'gbc': [
+        ('gbc-box-art',           '{nome} (USA).jpg',               'search'),
+    ],
+    'gb': [
+        ('gb-box-art',            '{nome} (USA).jpg',               'search'),
+    ],
+    'nes': [
+        ('near-nes-scans-png',    '{nome}/box/front.png',           'path'),
+    ],
 }
 
 
 def clean_name(nome):
-    """Remove extensão, prefixos de sistema, códigos de região e caracteres extras."""
+    """Remove extensão, prefixos de sistema e artefatos do nome do arquivo."""
     nome = os.path.splitext(nome)[0]
-    nome = re.sub(r'^[a-z]{2,5}_', '', nome)              # remove snes_, ps1_, etc
-    nome = re.sub(r'[\(\[\{][^\)\]\}]*[\)\]\}]', '', nome) # remove (USA), [!], etc
+    nome = re.sub(r'^[a-z]{2,5}_', '', nome)               # snes_, ps1_, etc
+    nome = re.sub(r'[\(\[\{][^\)\]\}]*[\)\]\}]', '', nome) # (USA), [!], etc
     nome = re.sub(r'[_\-]+', ' ', nome)
-    nome = re.sub(r'\s+', ' ', nome)
-    return nome.strip()
+    return ' '.join(nome.split()).strip()
 
 
 def _download(url, save_path):
@@ -54,63 +89,92 @@ def _download(url, save_path):
         return False
 
 
-def _archive_org(nome_busca, sistema, save_path):
-    """Internet Archive — gratuito, sem API key."""
-    collection = ARCHIVE_COLLECTIONS.get(sistema.lower(), '')
-    queries = []
-    if collection:
-        queries.append(f'collection:{collection} AND title:"{nome_busca}"')
-    queries.append(f'title:"{nome_busca}" AND (subject:"box art" OR subject:"covers") AND mediatype:image')
+def _try_archive_direct(nome, sistema, save_path):
+    """
+    Tenta baixar diretamente de coleções fixas do Archive.org.
+    Muito mais rápido e confiável do que a API de busca.
+    """
+    sources = ARCHIVE_SOURCES.get(sistema.lower(), [])
+    nome_clean = clean_name(nome)
 
-    for query in queries:
-        try:
-            r = requests.get(
-                'https://archive.org/advancedsearch.php',
-                params={'q': query, 'fl[]': ['identifier'], 'rows': 5, 'output': 'json'},
-                timeout=15, headers={'User-Agent': 'RetroCloud/1.0'}
-            )
-            r.raise_for_status()
-            docs = r.json().get('response', {}).get('docs', [])
-            for doc in docs:
-                ident = doc.get('identifier')
-                if not ident:
-                    continue
-                files_r = requests.get(f'https://archive.org/metadata/{ident}/files',
-                                        timeout=15, headers={'User-Agent': 'RetroCloud/1.0'})
-                files_r.raise_for_status()
-                files = files_r.json().get('result', [])
-                exts = ('.jpg', '.jpeg', '.png', '.webp')
-                keywords = ['front', 'cover', 'box']
-                # Tenta imagem de frente primeiro
+    # Variações do nome para tentar
+    variações = [
+        nome_clean,
+        nome_clean.title(),
+        # Remove artigos do início: "The 7th Saga" → "7th Saga, The"
+        re.sub(r'^(The|A|An) (.+)$', r'\2, \1', nome_clean, flags=re.IGNORECASE),
+    ]
+    variações = list(dict.fromkeys(variações))  # remove duplicatas mantendo ordem
+
+    for identifier, pattern, _ in sources:
+        for variacao in variações:
+            filename = pattern.format(nome=variacao)
+            url = f'https://archive.org/download/{identifier}/{requests.utils.quote(filename)}'
+            log.debug(f'Tentando: {url}')
+            if _download(url, save_path):
+                log.info(f'Capa encontrada: {identifier}/{filename}')
+                return True
+            time.sleep(0.2)
+
+    return False
+
+
+def _try_archive_search(nome, sistema, save_path):
+    """Fallback: usa API de busca do Archive.org."""
+    nome_clean = clean_name(nome)
+    collection = {
+        'snes': 'subject:SNES', 'n64': 'subject:N64',
+        'ps1': 'subject:PlayStation', 'psx': 'subject:PlayStation',
+        'megadrive': 'subject:Genesis', 'genesis': 'subject:Genesis', 'md': 'subject:Genesis',
+        'gba': 'subject:GBA', 'gbc': 'subject:GBC', 'gb': 'subject:"Game Boy"',
+        'nes': 'subject:NES',
+    }.get(sistema.lower(), '')
+
+    query = f'title:"{nome_clean}" AND {collection} AND (subject:"box art" OR subject:"covers")'
+    try:
+        r = requests.get('https://archive.org/advancedsearch.php',
+                         params={'q': query, 'fl[]': ['identifier'], 'rows': 3, 'output': 'json'},
+                         timeout=15, headers={'User-Agent': 'RetroCloud/1.0'})
+        r.raise_for_status()
+        docs = r.json().get('response', {}).get('docs', [])
+        for doc in docs:
+            ident = doc.get('identifier')
+            if not ident:
+                continue
+            files_r = requests.get(f'https://archive.org/metadata/{ident}/files',
+                                    timeout=10, headers={'User-Agent': 'RetroCloud/1.0'})
+            files_r.raise_for_status()
+            files = files_r.json().get('result', [])
+            exts = ('.jpg', '.jpeg', '.png', '.webp')
+            best = next((f for f in files
+                         if any(f.get('name','').lower().endswith(e) for e in exts)
+                         and any(k in f.get('name','').lower() for k in ['front','cover','box'])), None)
+            if not best:
                 best = next((f for f in files
-                             if any(f.get('name','').lower().endswith(e) for e in exts)
-                             and any(k in f.get('name','').lower() for k in keywords)), None)
-                # Fallback: qualquer imagem
-                if not best:
-                    best = next((f for f in files
-                                 if any(f.get('name','').lower().endswith(e) for e in exts)), None)
-                if best:
-                    url = f"https://archive.org/download/{ident}/{best['name']}"
-                    if _download(url, save_path):
-                        return True
-            time.sleep(0.3)
-        except Exception as e:
-            log.debug(f'Archive.org erro: {e}')
+                             if any(f.get('name','').lower().endswith(e) for e in exts)), None)
+            if best:
+                url = f"https://archive.org/download/{ident}/{requests.utils.quote(best['name'])}"
+                if _download(url, save_path):
+                    return True
+        time.sleep(0.3)
+    except Exception as e:
+        log.debug(f'Archive search erro: {e}')
     return False
 
 
 def _screenscraper(nome, sistema, user, pwd, save_path):
     if not user or not pwd:
         return False
-    SYS = {'ps1':57,'psx':57,'snes':3,'n64':14,'gba':12,'gbc':10,'gb':9,'megadrive':1,'genesis':1,'md':1,'nes':3}
+    SYS = {'ps1':57,'psx':57,'snes':3,'n64':14,'gba':12,'gbc':10,'gb':9,
+           'megadrive':1,'genesis':1,'md':1,'nes':3}
     sys_id = SYS.get(sistema.lower())
     if not sys_id:
         return False
     try:
         r = requests.get('https://www.screenscraper.fr/api2/jeuInfos.php',
             params={'devid':'retrocloud','devpassword':'retrocloud','softname':'retrocloud',
-                    'output':'json','ssid':user,'sspassword':pwd,'systemeid':sys_id,
-                    'romnom':nome,'media':'box-2D'}, timeout=15)
+                    'output':'json','ssid':user,'sspassword':pwd,
+                    'systemeid':sys_id,'romnom':nome,'media':'box-2D'}, timeout=15)
         r.raise_for_status()
         for m in r.json().get('response',{}).get('jeu',{}).get('medias',[]):
             if m.get('type') == 'box-2D':
@@ -120,12 +184,12 @@ def _screenscraper(nome, sistema, user, pwd, save_path):
     return False
 
 
-def _thegamesdb(nome, api_key, sistema, save_path):
+def _thegamesdb(nome, sistema, api_key, save_path):
     if not api_key:
         return False
     SYS = {'ps1':6,'psx':6,'snes':6004,'n64':3,'gba':5,'gbc':41,'gb':4,'megadrive':36,'nes':7}
     try:
-        params = {'apikey': api_key, 'name': nome, 'include': 'boxart'}
+        params = {'apikey': api_key, 'name': clean_name(nome), 'include': 'boxart'}
         sys_id = SYS.get(sistema.lower())
         if sys_id:
             params['filter[platform]'] = sys_id
@@ -152,7 +216,7 @@ def _steamgriddb(nome, api_key, save_path):
     try:
         h = {'Authorization': f'Bearer {api_key}'}
         r = requests.get('https://www.steamgriddb.com/api/v2/search/autocomplete',
-                         params={'term': nome}, headers=h, timeout=10)
+                         params={'term': clean_name(nome)}, headers=h, timeout=10)
         r.raise_for_status()
         games = r.json().get('data', [])
         if not games:
@@ -172,38 +236,41 @@ def _steamgriddb(nome, api_key, save_path):
 
 def fetch_thumb(rom, upload_folder, cfg, nome_override=None):
     """
-    Busca capa para uma ROM tentando todas as fontes disponíveis.
-    nome_override: permite tentar com um nome alternativo (ex: sem acentos).
+    Busca capa para uma ROM tentando todas as fontes.
+    nome_override: nome alternativo enviado pelo usuário.
     Retorna caminho relativo '/static/...' ou None.
     """
-    nome_busca = clean_name(nome_override or rom.nome or
-                            os.path.splitext(os.path.basename(rom.caminho or ''))[0])
-    sistema    = (rom.sistema or '').lower()
-    save_path  = os.path.join(upload_folder, 'thumbs', f'rom_{rom.id}.jpg')
-    thumb_rel  = f'/static/uploads/thumbs/rom_{rom.id}.jpg'
+    nome    = nome_override or rom.nome or \
+              clean_name(os.path.splitext(os.path.basename(rom.caminho or ''))[0])
+    sistema = (rom.sistema or '').lower()
+    save_path = os.path.join(upload_folder, 'thumbs', f'rom_{rom.id}.jpg')
+    thumb_rel = f'/static/uploads/thumbs/rom_{rom.id}.jpg'
+
+    log.info(f'Buscando capa: "{nome}" ({sistema})')
 
     sources = [
-        ('Archive.org',   lambda: _archive_org(nome_busca, sistema, save_path)),
-        ('ScreenScraper', lambda: _screenscraper(nome_busca, sistema,
-                              cfg.get('SCREENSCRAPER_USER',''), cfg.get('SCREENSCRAPER_PASS',''), save_path)),
-        ('TheGamesDB',    lambda: _thegamesdb(nome_busca, cfg.get('THEGAMESDB_API_KEY',''), sistema, save_path)),
-        ('SteamGridDB',   lambda: _steamgriddb(nome_busca, cfg.get('STEAMGRIDDB_API_KEY',''), save_path)),
+        ('Archive.org direto',  lambda: _try_archive_direct(nome, sistema, save_path)),
+        ('Archive.org busca',   lambda: _try_archive_search(nome, sistema, save_path)),
+        ('ScreenScraper',       lambda: _screenscraper(nome, sistema,
+                                    cfg.get('SCREENSCRAPER_USER',''), cfg.get('SCREENSCRAPER_PASS',''), save_path)),
+        ('TheGamesDB',          lambda: _thegamesdb(nome, sistema, cfg.get('THEGAMESDB_API_KEY',''), save_path)),
+        ('SteamGridDB',         lambda: _steamgriddb(nome, cfg.get('STEAMGRIDDB_API_KEY',''), save_path)),
     ]
 
     for src_name, fn in sources:
         try:
             if fn():
-                log.info(f'[{src_name}] Capa encontrada: "{nome_busca}"')
+                log.info(f'[OK] {src_name}: capa salva para "{nome}"')
                 return thumb_rel
         except Exception as e:
-            log.warning(f'[{src_name}] Erro inesperado: {e}')
+            log.warning(f'[ERRO] {src_name}: {e}')
 
-    log.info(f'Sem capa para: "{nome_busca}" ({sistema})')
+    log.info(f'[FALHA] Sem capa para "{nome}" ({sistema})')
     return None
 
 
 def fetch_thumb_bg(rom_id, app):
-    """Busca capa em thread separada (não bloqueia o request)."""
+    """Busca capa em thread background (não bloqueia o request)."""
     def run():
         with app.app_context():
             from models import Rom, db
@@ -227,7 +294,7 @@ class ThumbScheduler:
         self.app = app
         self._stop = threading.Event()
         threading.Thread(target=self._loop, daemon=True).start()
-        log.info('ThumbScheduler iniciado — roda diariamente')
+        log.info('ThumbScheduler iniciado — roda 2min após boot e depois a cada 24h')
 
     def stop(self): self._stop.set()
 
@@ -246,6 +313,7 @@ class ThumbScheduler:
             upload_folder = self.app.config['UPLOAD_FOLDER']
             roms = Rom.query.filter((Rom.thumb == None) | (Rom.thumb == '')).all()
             if not roms:
+                log.info('ThumbScheduler: todas as ROMs têm capa.')
                 return
             log.info(f'ThumbScheduler: {len(roms)} ROMs sem capa')
             ok = 0
@@ -254,7 +322,7 @@ class ThumbScheduler:
                 if path:
                     rom.thumb = path
                     ok += 1
-                time.sleep(1)  # respeita rate limit
+                time.sleep(1)
             if ok:
                 db.session.commit()
             log.info(f'ThumbScheduler: {ok}/{len(roms)} capas encontradas')

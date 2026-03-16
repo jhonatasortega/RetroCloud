@@ -1,16 +1,16 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useInputMode } from '@/hooks/useInputMode'
 import Navbar from '@/components/Navbar'
-import LoginPage   from '@/pages/LoginPage'
-import LibraryPage from '@/pages/LibraryPage'
-import PlayerPage  from '@/pages/PlayerPage'
-import AdminPage   from '@/pages/AdminPage'
+import LoginPage      from '@/pages/LoginPage'
+import LibraryPage    from '@/pages/LibraryPage'
+import PlayerPage     from '@/pages/PlayerPage'
+import AdminPage      from '@/pages/AdminPage'
+import BigPicturePage from '@/pages/BigPicturePage'
 import '@/index.css'
 
-// Ativa detecção global de modo de entrada
 function InputModeProvider({ children }) {
   useInputMode()
   return children
@@ -34,12 +34,55 @@ function AdminRoute({ children }) {
   return children
 }
 
-function AppLayout({ children }) {
+function AppWithBigPicture() {
+  const { user } = useAuth()
+  const [bigPicture, setBigPicture] = useState(false)
+
+  useEffect(() => {
+    const onConnect = () => {
+      if (!window.location.pathname.startsWith('/play/')) setBigPicture(true)
+    }
+    const onDisconnect = () => setBigPicture(false)
+    window.addEventListener('gamepadconnected',    onConnect)
+    window.addEventListener('gamepaddisconnected', onDisconnect)
+    // Verifica controle já conectado
+    if ([...(navigator.getGamepads?.() || [])].some(Boolean)) setBigPicture(true)
+    return () => {
+      window.removeEventListener('gamepadconnected',    onConnect)
+      window.removeEventListener('gamepaddisconnected', onDisconnect)
+    }
+  }, [])
+
+  if (bigPicture && user) {
+    return <BigPicturePage onExit={() => setBigPicture(false)} />
+  }
+
   return (
-    <>
-      <Navbar />
-      {children}
-    </>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={
+          <PrivateRoute>
+            <>
+              <Navbar onBigPicture={() => setBigPicture(true)} />
+              <LibraryPage />
+            </>
+          </PrivateRoute>
+        } />
+        <Route path="/play/:id" element={
+          <PrivateRoute><PlayerPage /></PrivateRoute>
+        } />
+        <Route path="/admin" element={
+          <AdminRoute>
+            <>
+              <Navbar />
+              <AdminPage />
+            </>
+          </AdminRoute>
+        } />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
@@ -47,27 +90,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AuthProvider>
       <InputModeProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/" element={
-              <PrivateRoute>
-                <AppLayout><LibraryPage /></AppLayout>
-              </PrivateRoute>
-            } />
-            <Route path="/play/:id" element={
-              <PrivateRoute>
-                <AppLayout><PlayerPage /></AppLayout>
-              </PrivateRoute>
-            } />
-            <Route path="/admin" element={
-              <AdminRoute>
-                <AppLayout><AdminPage /></AppLayout>
-              </AdminRoute>
-            } />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+        <AppWithBigPicture />
       </InputModeProvider>
     </AuthProvider>
   </React.StrictMode>

@@ -69,15 +69,43 @@ body[data-input-mode="touch"] .game-card:focus {
   transform: scale(1.02);
 }
 
-/* Touch: cards maiores para dedo */
-@media (pointer: coarse) {
-  .game-card { min-height: 160px; }
-  button, [data-gamepad-item] { min-height: 44px; }
+/* ── Big Picture mode (controle conectado) ── */
+body[data-big-picture="true"] {
+  font-size: 20px;
+}
+body[data-big-picture="true"] .game-card {
+  transform-origin: center;
+}
+body[data-big-picture="true"] .game-card:focus {
+  transform: scale(1.1) !important;
+  box-shadow: 0 0 0 5px #66c0f4, 0 0 40px rgba(102,192,244,0.6), 0 12px 40px rgba(0,0,0,0.9) !important;
+  z-index: 10;
+  position: relative;
+}
+body[data-big-picture="true"] [data-gamepad-item]:focus {
+  outline: 5px solid #66c0f4 !important;
+  outline-offset: 5px;
+  box-shadow: 0 0 0 10px rgba(102,192,244,0.2) !important;
+}
+/* Navbar oculta no Big Picture — mais espaço para os jogos */
+body[data-big-picture="true"] nav {
+  opacity: 0.3;
+  transition: opacity 0.3s;
+}
+body[data-big-picture="true"] nav:hover,
+body[data-big-picture="true"] nav:focus-within {
+  opacity: 1;
 }
 
-/* Player em celular — espaço para controle virtual */
-body[data-input-mode="touch"] #player-container iframe {
-  max-height: calc(100vh - 48px - 160px);
+/* ── Touch: garante área mínima de toque em todos os botões ── */
+button, [data-gamepad-item], label[for], input[type="file"] + span {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(102,192,244,0.2);
+}
+button { min-height: 36px; }
+@media (pointer: coarse) {
+  button, [data-gamepad-item] { min-height: 44px; min-width: 44px; }
+  .game-card { min-height: 180px; }
 }
 
 /* ── Animações ── */

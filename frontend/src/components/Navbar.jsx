@@ -8,7 +8,7 @@ const MODE_CONFIG = {
   gamepad:  { icon: '🕹',  label: 'Controle', color: 'text-green-400 bg-green-900/30' },
 }
 
-export default function Navbar() {
+export default function Navbar({ onBigPicture }) {
   const { user, logout } = useAuth()
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -45,11 +45,21 @@ export default function Navbar() {
 
       {/* Status + User */}
       <div className="flex items-center gap-2">
-        {/* Badge modo de entrada — muda automaticamente */}
+        {/* Badge modo de entrada */}
         <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded transition-all duration-300 ${mode.color}`}>
           <span>{mode.icon}</span>
           <span className="hidden sm:inline">{mode.label}</span>
         </div>
+
+        {/* Botão Big Picture — só aparece no modo gamepad */}
+        {inputMode === 'gamepad' && onBigPicture && (
+          <button onClick={onBigPicture}
+            className="flex items-center gap-1.5 text-xs px-2 py-1 rounded
+                       text-green-400 bg-green-900/30 hover:bg-green-900/50 transition-colors">
+            <span>🎮</span>
+            <span className="hidden sm:inline">Big Picture</span>
+          </button>
+        )}
 
         {/* Menu do usuário */}
         <div className="relative">

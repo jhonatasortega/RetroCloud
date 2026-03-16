@@ -105,9 +105,11 @@ function RomsTab() {
     load()
   }
 
-  const [thumbSearch, setThumbSearch] = useState({}) // { [romId]: nomeAlternativo }
+  const [thumbLoading, setThumbLoading] = useState({}) // { [romId]: true }
+  const [thumbSearch, setThumbSearch]   = useState({})
 
   const fetchThumb = async (id, nomeOverride) => {
+    setThumbLoading(s => ({ ...s, [id]: true }))
     try {
       const token = localStorage.getItem('retrocloud_token')
       const res = await fetch(`/api/scraper/rom/${id}/fetch-thumb`, {
@@ -121,11 +123,11 @@ function RomsTab() {
         setThumbSearch(s => ({ ...s, [id]: undefined }))
         load()
       } else {
-        // Mostra campo para tentar nome alternativo
         setThumbSearch(s => ({ ...s, [id]: { show: true, valor: d.nome_limpo || '', msg: d.message } }))
         setMsg('')
       }
     } catch { setMsg('Erro ao buscar capa.') }
+    finally { setThumbLoading(s => ({ ...s, [id]: false })) }
   }
 
   const uploadThumb = async (id, file) => {
@@ -234,12 +236,12 @@ function RomsTab() {
       </Card>
 
       {/* Lista com abas por sistema e busca */}
-      <RomsList games={games} loading={loading} onFetchThumb={fetchThumb} onDelete={deleteRom} onUploadThumb={uploadThumb} thumbSearch={thumbSearch} />
+      <RomsList games={games} loading={loading} onFetchThumb={fetchThumb} onDelete={deleteRom} onUploadThumb={uploadThumb} thumbSearch={thumbSearch} thumbLoading={thumbLoading} />
     </div>
   )
 }
 
-function RomsList({ games, loading, onFetchThumb, onDelete, onUploadThumb, thumbSearch = {} }) {
+function RomsList({ games, loading, onFetchThumb, onDelete, onUploadThumb, thumbSearch = {}, thumbLoading = {} }) {
   const [search, setSearch]   = useState('')
   const [sistema, setSistema] = useState('todos')
 
@@ -308,7 +310,12 @@ function RomsList({ games, loading, onFetchThumb, onDelete, onUploadThumb, thumb
                         <div className="flex flex-col gap-1">
                           <div className="flex gap-2 flex-wrap items-center">
                             <button onClick={() => onFetchThumb(g.id)}
-                              className="text-xs text-steam-accent hover:underline">buscar capa</button>
+                              disabled={thumbLoading[g.id]}
+                              className="text-xs text-steam-accent hover:underline disabled:opacity-50 flex items-center gap-1">
+                              {thumbLoading[g.id]
+                                ? <><span className="animate-spin inline-block">⏳</span> buscando...</>
+                                : 'buscar capa'}
+                            </button>
                             <label className="text-xs text-green-400 hover:underline cursor-pointer">
                               enviar capa
                               <input type="file" accept="image/*" className="hidden"
