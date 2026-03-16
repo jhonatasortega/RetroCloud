@@ -231,16 +231,19 @@ export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
 
         // D-pad esq/dir + analógico — navega com repeat e skip de letra
         const PAGE = 20
+        // navStart só reseta quando botão é SOLTO — não quando dispara repeat
+        const isNavHeld = h[14] || h[15] || h.axL || h.axR
+        if (isNavHeld && !navStart.current) navStart.current = now
+        if (!isNavHeld) navStart.current = 0
+
+        const heldMs = navStart.current ? now - navStart.current : 0
+        const jumpMode = heldMs > 2000  // 2s para ativar modo pulo
+
         const goLeft = () => {
           setGameIdx(cur => {
-            const games = filteredGamesRef.current
-            const held = now - (navStart.current || now)
-            if (held > 800) {
-              // Pula para início do grupo anterior de 20
+            if (jumpMode) {
               const page = Math.floor(cur / PAGE)
-              const target = Math.max(0, (page - 1) * PAGE)
-              navStart.current = now
-              return target
+              return Math.max(0, (page - 1) * PAGE)
             }
             return Math.max(0, cur - 1)
           })
@@ -248,13 +251,9 @@ export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
         const goRight = () => {
           setGameIdx(cur => {
             const games = filteredGamesRef.current
-            const held = now - (navStart.current || now)
-            if (held > 800) {
-              // Pula para início do próximo grupo de 20
+            if (jumpMode) {
               const page = Math.floor(cur / PAGE)
-              const target = Math.min(games.length - 1, (page + 1) * PAGE)
-              navStart.current = now
-              return target
+              return Math.min(games.length - 1, (page + 1) * PAGE)
             }
             return Math.min(cur + 1, games.length - 1)
           })
@@ -265,11 +264,7 @@ export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
         repeatFire('axL', goLeft)
         repeatFire('axR', goRight)
 
-        if (h[14] || h[15] || h.axL || h.axR) {
-          if (!navStart.current) navStart.current = now
-        } else {
-          navStart.current = 0
-        }
+        // navStart controlado acima com isNavHeld
 
         // D-pad cima/baixo — troca sistema
         if (jd(12) || (ay < -0.5 && pAxes.ay >= -0.5)) setSysIdx(i => Math.max(0, i - 1))
