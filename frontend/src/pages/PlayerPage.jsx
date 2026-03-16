@@ -104,24 +104,10 @@ export default function PlayerPage() {
       const st = document.createElement('style')
       st.id = 'ejs-hide-ui'
       st.textContent = `
-        /* Esconde absolutamente tudo do EmulatorJS exceto o canvas */
-        #emulator-container > *:not(canvas):not(div:has(canvas)) { display: none !important; }
-        #emulator-container div[class] { display: none !important; }
         #emulator-container .ejs_menu_bar { display: none !important; }
         #emulator-container .ejs_volume_bar { display: none !important; }
-        #emulator-container .ejs_start_btn { display: none !important; }
-        #emulator-container [class*="bar"] { display: none !important; }
-        #emulator-container [class*="menu"] { display: none !important; }
-        #emulator-container [class*="toolbar"] { display: none !important; }
-        #emulator-container [class*="control"] { display: none !important; }
-        #emulator-container [class*="button"] { display: none !important; }
-        #emulator-container canvas {
-          display: block !important;
-          width: 100% !important;
-          height: 100% !important;
-          position: absolute !important;
-          top: 0 !important; left: 0 !important;
-        }
+        #emulator-container .ejs_ctx_menu { display: none !important; }
+        #emulator-container canvas { display: block !important; }
       `
       document.head.appendChild(st)
 
@@ -237,16 +223,17 @@ export default function PlayerPage() {
         )}
 
         {gamepadConnected && !menuOpen && <ControlHint />}
+
+        {/* Menu DENTRO do player-wrap — aparece em fullscreen */}
+        {menuOpen && (
+          <GameMenu game={game}
+            onClose={() => setMenuOpen(false)}
+            onBack={() => { setMenuOpen(false); goBack() }}
+            onFullscreen={() => { setMenuOpen(false); toggleFullscreen() }} />
+        )}
       </div>
 
       <TouchGamepad visible={showTouch} />
-
-      {menuOpen && (
-        <GameMenu game={game}
-          onClose={() => setMenuOpen(false)}
-          onBack={() => { setMenuOpen(false); goBack() }}
-          onFullscreen={() => { setMenuOpen(false); toggleFullscreen() }} />
-      )}
     </div>
   )
 }
