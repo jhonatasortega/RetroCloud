@@ -20,6 +20,6 @@ Write-Host "[2/3] Verificando Docker..." -ForegroundColor Yellow
 ssh "${USER}@${HOST_IP}" "which docker || (curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker $USER)"
 
 Write-Host "[3/3] Rebuild e subindo..." -ForegroundColor Yellow
-ssh "${USER}@${HOST_IP}" "cd $DESTINO && [ ! -f .env ] && cp .env.example .env; docker compose down && docker compose up -d --build && docker compose ps"
+ssh "${USER}@${HOST_IP}" "cd $DESTINO && [ ! -f .env ] && cp .env.example .env; chmod -R 755 emulatorjs/roms emulatorjs/saves; docker compose down && docker compose up -d --build && docker compose ps"
 
 Write-Host "`n[RetroCloud] Deploy concluido! http://$HOST_IP" -ForegroundColor Green

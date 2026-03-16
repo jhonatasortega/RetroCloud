@@ -20,7 +20,7 @@ scp    "$PROJETO/docker-compose.yml"  "${USER}@${HOST_IP}:${DESTINO}/"
 
 # Reinicia só os containers afetados
 Write-Host "[2/2] Reiniciando containers..." -ForegroundColor Yellow
-ssh "${USER}@${HOST_IP}" "docker restart retrocloud_frontend retrocloud_backend retrocloud_nginx"
+ssh "${USER}@${HOST_IP}" "cd $DESTINO && chmod -R 755 emulatorjs/roms emulatorjs/saves && docker restart retrocloud_frontend retrocloud_backend retrocloud_nginx"
 
 Write-Host "`n[RetroCloud] Atualizado! http://$HOST_IP" -ForegroundColor Green
 Write-Host "Aguarde ~5s para o Vite recarregar." -ForegroundColor Gray

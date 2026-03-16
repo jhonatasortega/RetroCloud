@@ -14,10 +14,12 @@ if [ ! -f ".env" ]; then
   echo "[!] .env criado com SECRET_KEY gerada automaticamente."
 fi
 
-# Cria estrutura de pastas
+# Cria estrutura de pastas e garante permissões para o nginx ler as ROMs
 mkdir -p emulatorjs/roms/{ps1,snes,n64,gba,gbc,gb,megadrive,nes}
 mkdir -p emulatorjs/saves
 mkdir -p backend/static/uploads/{thumbs,roms}
+chmod -R 755 emulatorjs/roms
+chmod -R 755 emulatorjs/saves
 
 echo "[1/2] Subindo containers..."
 docker compose up -d --build
