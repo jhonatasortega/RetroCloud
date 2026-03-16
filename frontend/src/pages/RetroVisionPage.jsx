@@ -174,8 +174,8 @@ export default function RetroVisionPage({ onExit, onLaunch }) {
         if (justDown(0)) menuItems[menuIdx]?.action()
         if (justDown(1) || MENU_BTNS.some(justDown)) setMenuOpen(false)
       } else if (confirmExit) {
-        if (justDown(0) || justDown(1)) confirmExitNow()
-        if (justDown(2)) { setConfirmExit(false) } // X cancela
+        if (justDown(0)) confirmExitNow()    // A confirma
+        if (justDown(1) || justDown(2)) setConfirmExit(false) // B/X cancela
       } else {
         if (repeatFire(4)) setSysIdx(i => Math.max(i - 1, 0))
         if (repeatFire(5)) setSysIdx(i => Math.min(i + 1, systems.length - 1))
@@ -222,7 +222,7 @@ export default function RetroVisionPage({ onExit, onLaunch }) {
 
         if (justDown(0)) launchCurrent()
         if (MENU_BTNS.some(justDown)) { setMenuOpen(true); setMenuIdx(0) }
-        if (justDown(1)) confirmExit ? confirmExitNow() : tryExit()
+        if (justDown(1)) tryExit()
       }
 
       prevBtns.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
@@ -353,7 +353,7 @@ export default function RetroVisionPage({ onExit, onLaunch }) {
              style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
           <div style={{ background: '#0f0f18', border: `1px solid ${meta.glow}60`, borderRadius: 16, padding: '28px 40px', textAlign: 'center', boxShadow: `0 0 40px ${meta.glow}30` }}>
             <p style={{ color: '#fff', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Sair do RetroVision?</p>
-            <p style={{ color: '#ffffff60', fontSize: 13, marginBottom: 20 }}>A / B confirmar · X cancelar</p>
+            <p style={{ color: '#ffffff60', fontSize: 13, marginBottom: 20 }}>A confirmar · B / X cancelar</p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
               <button onClick={confirmExitNow} style={{ background: meta.color, color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Sair</button>
               <button onClick={() => setConfirmExit(false)} style={{ background: 'rgba(255,255,255,0.08)', color: '#ffffff80', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '10px 24px', fontSize: 14, cursor: 'pointer' }}>Cancelar</button>

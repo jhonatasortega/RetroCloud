@@ -1,46 +1,38 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 import TouchGamepad from '@/components/TouchGamepad'
 
 const CORE_MAP = {
-  ps1: 'psx', psx: 'psx',
-  snes: 'snes', n64: 'n64',
+  ps1: 'psx', psx: 'psx', snes: 'snes', n64: 'n64',
   gba: 'gba', gbc: 'gbc', gb: 'gb',
-  megadrive: 'segaMD', genesis: 'segaMD', md: 'segaMD',
-  nes: 'nes',
+  megadrive: 'segaMD', genesis: 'segaMD', md: 'segaMD', nes: 'nes',
 }
 
-// Apenas Guide/PS abre o menu — Start e Select ficam livres pro jogo
-const MENU_BTNS = [16]
+const MENU_BTNS = [16] // só Guide/PS
 
 export default function PlayerPage() {
-  const { id }   = useParams()
-  const navigate = useNavigate()
-  const containerRef = useRef(null)
-  const animRef      = useRef(null)
-  const prevBtns     = useRef({})
-  const mountTime    = useRef(Date.now())
+  const { id } = useParams()
+  const animRef  = useRef(null)
+  const prevBtns = useRef({})
 
-  // Inicializa prevBtns com estado atual — evita detectar botões já pressionados como "just pressed"
-  useEffect(() => {
-    const gps = navigator.getGamepads?.() || []
-    for (const gp of gps) {
-      if (!gp) continue
-      prevBtns.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
-    }
-  }, [])
-  const emulationMode = import.meta.env.VITE_EMULATION_MODE || 'local'
-
-  const [game, setGame]         = useState(null)
-  const [playInfo, setPlay]     = useState(null)
-  const [ready, setReady]       = useState(false)  // true quando dados carregados
-  const [ejsLoaded, setEjsLoaded] = useState(false)
+  const [game, setGame]       = useState(null)
+  const [playInfo, setPlay]   = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [gamepadConnected, setGamepadConnected] = useState(false)
   const [showTouch, setShowTouch] = useState(false)
-  const [error, setError]       = useState('')
+  const [error, setError]     = useState('')
+
+  // Determina se veio do RetroVision
+  const fromRV = sessionStorage.getItem('from_rv') === '1'
+
+  // Volta: para emulador, limpa flag, redireciona
+  const goBack = useCallback(() => {
+    try { window.EJS_emulator?.pause?.() } catch {}
+    sessionStorage.removeItem('from_rv')
+    window.location.href = fromRV ? '/?rv=1' : '/'
+  }, [fromRV])
 
   // Detecta controle e touch
   useEffect(() => {
@@ -49,7 +41,8 @@ export default function PlayerPage() {
     window.addEventListener('gamepaddisconnected', checkGp)
     checkGp()
     setShowTouch(navigator.maxTouchPoints > 0)
-    const obs = new MutationObserver(() => setShowTouch(document.body.dataset.inputMode === 'touch'))
+    const obs = new MutationObserver(() =>
+      setShowTouch(document.body.dataset.inputMode === 'touch'))
     obs.observe(document.body, { attributes: true, attributeFilter: ['data-input-mode'] })
     return () => {
       window.removeEventListener('gamepadconnected', checkGp)
@@ -58,120 +51,99 @@ export default function PlayerPage() {
     }
   }, [])
 
-  // Carrega dados do jogo
+  // Carrega dados
   useEffect(() => {
     Promise.all([api.game(id), api.play(id)])
-      .then(([gd, pd]) => { setGame(gd.game); setPlay(pd); setReady(true) })
+      .then(([gd, pd]) => { setGame(gd.game); setPlay(pd) })
       .catch(e => setError(e.message))
   }, [id])
 
-  // Inicia EmulatorJS quando pronto E container montado
+  // Inicia EmulatorJS após dados carregados
   useEffect(() => {
-    if (!ready || !game || !playInfo) return
+    if (!game || !playInfo) return
 
     const sysKey  = game.sistema?.toLowerCase()
     const core    = CORE_MAP[sysKey] || sysKey
     const romFile = playInfo.emulator_url
-      ? `/roms/${sysKey}/${playInfo.emulator_url.split('/').pop()}`
-      : ''
+      ? `/roms/${sysKey}/${playInfo.emulator_url.split('/').pop()}` : ''
 
-    // Limpa instância anterior PRIMEIRO — evita EJS_STORAGE already declared
-    const existing = document.getElementById('emulatorjs-script')
-    if (existing) existing.remove()
+    // Remove script anterior
+    document.getElementById('emulatorjs-script')?.remove()
+    try { window.EJS_emulator?.pause?.() } catch {}
+    delete window.EJS_emulator
 
-    // Pequeno delay garante que o script anterior foi removido do DOM
-    // Retry até o container estar no DOM com dimensões reais
-    let retries = 0
+    // Retry até container ter dimensões
+    let tries = 0
     const init = () => {
-      // Aguarda 150ms na primeira tentativa para garantir remoção do script anterior
-      if (retries === 0) { retries++; setTimeout(init, 150); return }
-      const container = document.getElementById('emulator-container')
-      if (!container || container.offsetWidth === 0) {
-        if (retries++ < 30) setTimeout(init, 50)
+      const el = document.getElementById('emulator-container')
+      if (!el || el.offsetWidth === 0) {
+        if (tries++ < 20) setTimeout(init, 50)
         return
       }
 
-      try { window.EJS_emulator?.pause?.() } catch {}
-      delete window.EJS_emulator
-
-      // Configura
-      window.EJS_player           = '#emulator-container'
-      window.EJS_core             = core
-      window.EJS_gameUrl          = romFile
-      window.EJS_pathtodata       = 'https://cdn.emulatorjs.org/stable/data/'
-      window.EJS_startOnLoaded    = true
-      window.EJS_color            = '#66c0f4'
-      window.EJS_backgroundColor  = '#000000'
-      window.EJS_language         = 'en-US'
+      window.EJS_player          = '#emulator-container'
+      window.EJS_core            = core
+      window.EJS_gameUrl         = romFile
+      window.EJS_pathtodata      = 'https://cdn.emulatorjs.org/stable/data/'
+      window.EJS_startOnLoaded   = true
+      window.EJS_color           = '#66c0f4'
+      window.EJS_backgroundColor = '#000000'
+      window.EJS_language        = 'en-US'
       window.EJS_Buttons = {
-        playPause: false, restart: false, mute: false,
-        settings: false, fullscreen: false, saveState: false,
-        loadState: false, screenRecord: false, gamepad: false,
-        cheat: false, volume: false, saveSavFiles: true, contextMenu: false,
+        playPause: false, restart: false, mute: false, settings: false,
+        fullscreen: false, saveState: false, loadState: false,
+        screenRecord: false, gamepad: false, cheat: false,
+        volume: false, saveSavFiles: true, contextMenu: false,
       }
 
-      // Esconde UI do EmulatorJS
-      let styleEl = document.getElementById('ejs-hide-ui')
-      if (!styleEl) {
-        styleEl = document.createElement('style')
-        styleEl.id = 'ejs-hide-ui'
-        document.head.appendChild(styleEl)
-      }
-      styleEl.textContent = `
-        #emulator-container .ejs_menu_bar,
-        #emulator-container .ejs_volume_bar,
-        #emulator-container [class*="menu"],
-        #emulator-container [class*="toolbar"],
-        #emulator-container [class*="controls"],
-        #emulator-container .ejs_ctx_menu { display: none !important; }
+      let st = document.getElementById('ejs-hide-ui')
+      if (!st) { st = document.createElement('style'); st.id = 'ejs-hide-ui'; document.head.appendChild(st) }
+      st.textContent = `
+        #emulator-container .ejs_menu_bar, #emulator-container .ejs_volume_bar,
+        #emulator-container [class*="menu"], #emulator-container [class*="toolbar"],
+        #emulator-container [class*="controls"], #emulator-container .ejs_ctx_menu
+        { display: none !important; }
         #emulator-container canvas { display: block !important; width: 100% !important; }
       `
 
-      // Carrega script
       const script = document.createElement('script')
       script.id  = 'emulatorjs-script'
       script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js'
       script.onload = () => {
-        // Dispara resize após script carregar — resolve "classList of null"
-        setTimeout(() => window.dispatchEvent(new Event('resize')), 300)
-        setTimeout(() => window.dispatchEvent(new Event('resize')), 800)
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 500)
       }
       document.body.appendChild(script)
     }
 
-    init()
+    setTimeout(init, 100)
 
     return () => {
-      const s = document.getElementById('emulatorjs-script')
-      if (s) s.remove()
-      const st = document.getElementById('ejs-hide-ui')
-      if (st) st.remove()
+      document.getElementById('emulatorjs-script')?.remove()
+      document.getElementById('ejs-hide-ui')?.remove()
       try { window.EJS_emulator?.pause?.() } catch {}
-      delete window.EJS_player
-      delete window.EJS_core
-      delete window.EJS_gameUrl
-      delete window.EJS_emulator
+      delete window.EJS_player; delete window.EJS_core
+      delete window.EJS_gameUrl; delete window.EJS_emulator
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, game, playInfo])
+  }, [game, playInfo])
 
-  // Poll gamepad — ignora primeiros 1200ms (flush do B do RetroVision)
-  const pollGamepad = useCallback(() => {
-    const sinceMount = Date.now() - mountTime.current
+  // Poll gamepad — inicializa prevBtns com estado atual para evitar B vazar
+  useEffect(() => {
     const gps = navigator.getGamepads?.() || []
-
     for (const gp of gps) {
       if (!gp) continue
-      const newState = Object.fromEntries(gp.buttons.map((b, i) => [i, b.pressed]))
+      prevBtns.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+    }
+  }, [])
 
-      if (sinceMount >= 1200) {
-        const prev = prevBtns.current[gp.index] || {}
-        gp.buttons.forEach((btn, i) => {
-          if (btn.pressed && !prev[i] && MENU_BTNS.includes(i)) {
-            setMenuOpen(m => !m)
-          }
-        })
-      }
+  const pollGamepad = useCallback(() => {
+    const gps = navigator.getGamepads?.() || []
+    for (const gp of gps) {
+      if (!gp) continue
+      const prev     = prevBtns.current[gp.index] || {}
+      const newState = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+      gp.buttons.forEach((btn, i) => {
+        if (btn.pressed && !prev[i] && MENU_BTNS.includes(i)) setMenuOpen(m => !m)
+      })
       prevBtns.current[gp.index] = newState
     }
     animRef.current = requestAnimationFrame(pollGamepad)
@@ -183,18 +155,14 @@ export default function PlayerPage() {
   }, [pollGamepad])
 
   const toggleFullscreen = () => {
-    const el = document.getElementById('player-wrap')
     if (!document.fullscreenElement) {
-      el?.requestFullscreen?.()
+      document.getElementById('player-wrap')?.requestFullscreen?.()
       setFullscreen(true)
     } else {
       document.exitFullscreen?.()
       setFullscreen(false)
     }
   }
-
-  // Volta sempre para a biblioteca — não usa navigate(-1) pois quebra vindo do RetroVision
-  const goBack = () => navigate('/')
 
   if (error) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
@@ -232,36 +200,18 @@ export default function PlayerPage() {
       )}
 
       <div id="player-wrap" className="flex-1 relative bg-black">
-        {emulationMode === 'local' ? (
-          <div
-            id="emulator-container"
-            ref={containerRef}
-            style={{
-              width: '100%',
-              height: showTouch ? 'calc(100vh - 208px)' : 'calc(100vh - 48px)',
-              minHeight: 480,
-              display: 'block',
-              background: '#000',
-            }}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-center p-8">
-            <div className="text-6xl">☁️</div>
-            <p className="text-steam-muted text-sm">Configure <code className="text-steam-accent">EMULATION_MODE=local</code> no .env.</p>
-          </div>
-        )}
+        <div id="emulator-container" ref={useRef(null)}
+          style={{ width: '100%', height: showTouch ? 'calc(100vh - 208px)' : 'calc(100vh - 48px)', minHeight: 480, display: 'block', background: '#000' }} />
         {gamepadConnected && <ControlHint />}
       </div>
 
       <TouchGamepad visible={showTouch} />
 
       {menuOpen && (
-        <GameMenu
-          game={game}
+        <GameMenu game={game}
           onClose={() => setMenuOpen(false)}
           onBack={() => { setMenuOpen(false); goBack() }}
-          onFullscreen={() => { setMenuOpen(false); toggleFullscreen() }}
-        />
+          onFullscreen={() => { setMenuOpen(false); toggleFullscreen() }} />
       )}
     </div>
   )
@@ -277,7 +227,7 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
     { icon: '⊞', label: 'Tela cheia',         action: onFullscreen },
     { icon: '💾', label: 'Salvar estado',       action: () => { window.EJS_emulator?.saveState?.(); onClose() } },
     { icon: '📂', label: 'Carregar estado',     action: () => { window.EJS_emulator?.loadState?.(); onClose() } },
-    { icon: '🔄', label: 'Reiniciar jogo',      action: () => { window.EJS_emulator?.restart?.(); onClose() } },
+    { icon: '🔄', label: 'Reiniciar',           action: () => { window.EJS_emulator?.restart?.(); onClose() } },
     { icon: '←',  label: 'Sair do jogo',        action: onBack },
   ]
 
@@ -292,7 +242,6 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [selected, items, onClose])
 
-  // Poll do controle no menu
   useEffect(() => {
     const poll = () => {
       const gps = navigator.getGamepads?.() || []
@@ -316,13 +265,11 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
   }, [selected, items, onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fadein"
+    <div className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}>
       <div className="bg-steam-card border border-steam-border rounded-2xl overflow-hidden w-80 shadow-2xl">
         <div className="px-6 py-4 border-b border-steam-border bg-steam-panel flex items-center gap-3">
-          {game?.thumb
-            ? <img src={game.thumb} alt="" className="w-10 h-12 object-cover rounded" />
-            : <span className="text-2xl">🎮</span>}
+          {game?.thumb ? <img src={game.thumb} alt="" className="w-10 h-12 object-cover rounded" /> : <span className="text-2xl">🎮</span>}
           <div>
             <p className="text-white font-medium text-sm">{game?.nome}</p>
             <p className="text-steam-muted text-xs">{game?.sistema?.toUpperCase()}</p>
@@ -333,8 +280,7 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
             <button key={i} onClick={item.action} onMouseEnter={() => setSelected(i)}
               className={`w-full flex items-center gap-4 px-6 py-3 text-sm transition-colors text-left
                 ${selected === i ? 'bg-steam-accent text-steam-bg font-medium' : 'text-steam-text hover:bg-steam-panel'}`}>
-              <span className="w-5 text-center">{item.icon}</span>
-              {item.label}
+              <span className="w-5 text-center">{item.icon}</span>{item.label}
             </button>
           ))}
         </div>
@@ -348,14 +294,11 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
 
 function ControlHint() {
   const [visible, setVisible] = useState(true)
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(false), 4000)
-    return () => clearTimeout(t)
-  }, [])
+  useEffect(() => { const t = setTimeout(() => setVisible(false), 4000); return () => clearTimeout(t) }, [])
   if (!visible) return null
   return (
     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/70 text-steam-muted
-                    text-xs px-4 py-2 rounded-full border border-steam-border animate-fadein">
+                    text-xs px-4 py-2 rounded-full border border-steam-border">
       Guide para abrir o menu
     </div>
   )

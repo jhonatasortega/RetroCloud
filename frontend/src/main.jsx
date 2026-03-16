@@ -3,11 +3,11 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useInputMode } from '@/hooks/useInputMode'
-import Navbar         from '@/components/Navbar'
-import LoginPage      from '@/pages/LoginPage'
-import LibraryPage    from '@/pages/LibraryPage'
-import PlayerPage     from '@/pages/PlayerPage'
-import AdminPage      from '@/pages/AdminPage'
+import Navbar          from '@/components/Navbar'
+import LoginPage       from '@/pages/LoginPage'
+import LibraryPage     from '@/pages/LibraryPage'
+import PlayerPage      from '@/pages/PlayerPage'
+import AdminPage       from '@/pages/AdminPage'
 import RetroVisionPage from '@/pages/RetroVisionPage'
 import '@/index.css'
 
@@ -34,41 +34,50 @@ function AdminRoute({ children }) {
   return children
 }
 
-// Dentro do BrowserRouter para ter acesso ao useNavigate
 function AppRoutes() {
   const { user } = useAuth()
-  const [retroVision, setRetroVision] = useState(false)
+
+  // RetroVision ativo se: controle conectado OU voltou de um jogo com ?rv=1
+  const [retroVision, setRetroVision] = useState(() => {
+    return new URLSearchParams(window.location.search).get('rv') === '1'
+  })
 
   useEffect(() => {
+    // Limpa o ?rv=1 da URL sem reload
+    if (window.location.search.includes('rv=1')) {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
     const onConnect    = () => {
       if (!window.location.pathname.startsWith('/play/')) setRetroVision(true)
     }
     const onDisconnect = () => setRetroVision(false)
+    const onKey        = (e) => { if (e.key === 'Escape') setRetroVision(false) }
+
     window.addEventListener('gamepadconnected',    onConnect)
     window.addEventListener('gamepaddisconnected', onDisconnect)
-    // ESC global sai do RetroVision
-    const onKey = (e) => { if (e.key === 'Escape') setRetroVision(false) }
-    window.addEventListener('keydown', onKey)
-    // Verifica controle já conectado
+    window.addEventListener('keydown',             onKey)
+
     if ([...(navigator.getGamepads?.() || [])].some(Boolean)) setRetroVision(true)
+
     return () => {
       window.removeEventListener('gamepadconnected',    onConnect)
       window.removeEventListener('gamepaddisconnected', onDisconnect)
-      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keydown',             onKey)
     }
   }, [])
+
+  // Lança jogo: salva flag e faz redirect completo
+  const handleLaunch = (id) => {
+    sessionStorage.setItem('from_rv', '1')
+    window.location.href = `/play/${id}`
+  }
 
   if (retroVision && user) {
     return (
       <RetroVisionPage
         onExit={() => setRetroVision(false)}
-        onLaunch={(id) => {
-          setRetroVision(false)   // desmonta RetroVision
-          // Pequeno delay deixa o React processar o unmount antes do navigate
-          setTimeout(() => {
-            window.location.href = `/play/${id}`
-          }, 50)
-        }}
+        onLaunch={handleLaunch}
       />
     )
   }
