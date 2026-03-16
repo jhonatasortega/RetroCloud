@@ -66,18 +66,22 @@ export default function PlayerPage() {
       ? `/roms/${sysKey}/${playInfo.emulator_url.split('/').pop()}`
       : ''
 
-    // Retry até o container estar no DOM (vindo do RetroVision pode demorar um frame)
+    // Limpa instância anterior PRIMEIRO — evita EJS_STORAGE already declared
+    const existing = document.getElementById('emulatorjs-script')
+    if (existing) existing.remove()
+
+    // Pequeno delay garante que o script anterior foi removido do DOM
+    // Retry até o container estar no DOM com dimensões reais
     let retries = 0
     const init = () => {
+      // Aguarda 150ms na primeira tentativa para garantir remoção do script anterior
+      if (retries === 0) { retries++; setTimeout(init, 150); return }
       const container = document.getElementById('emulator-container')
-      if (!container) {
-        if (retries++ < 20) setTimeout(init, 50)
+      if (!container || container.offsetWidth === 0) {
+        if (retries++ < 30) setTimeout(init, 50)
         return
       }
 
-      // Limpa instância anterior
-      const existing = document.getElementById('emulatorjs-script')
-      if (existing) existing.remove()
       try { window.EJS_emulator?.pause?.() } catch {}
       delete window.EJS_emulator
 
@@ -135,6 +139,7 @@ export default function PlayerPage() {
       delete window.EJS_gameUrl
       delete window.EJS_emulator
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, game, playInfo])
 
   // Poll gamepad — ignora primeiros 1200ms (flush do B do RetroVision)
