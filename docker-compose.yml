@@ -43,25 +43,6 @@ services:
       - retrocloud_network
     restart: unless-stopped
 
-  emulatorjs:
-    container_name: retrocloud_emulatorjs
-    image: ghcr.io/linuxserver/emulatorjs:1.9.2-ls173@sha256:81db557b263e32e57e1df08b786f1fec64f1684799125ec05d212e6450601eb3
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/Sao_Paulo
-      - SUBFOLDER=/emulator/
-    volumes:
-      - ./emulatorjs/config:/config
-      - ./emulatorjs/data:/data
-      - ./emulatorjs/roms:/roms
-    ports:
-      - "3001:3000"
-      - "3002:80"
-    networks:
-      - retrocloud_network
-    restart: unless-stopped
-
   nginx:
     container_name: retrocloud_nginx
     image: nginx:alpine
@@ -69,10 +50,10 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./emulatorjs/roms:/roms:ro
     depends_on:
       - backend
       - frontend
-      - emulatorjs
     networks:
       - retrocloud_network
     restart: unless-stopped

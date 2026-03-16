@@ -98,7 +98,7 @@ def play_game(current_user, rom_id):
     return jsonify({
         'rom': rom.to_dict(),
         'save_path': save.caminho if save else None,
-        'emulator_url': f'/emulator/{rom.sistema}/{os.path.basename(rom.caminho)}'
+        'emulator_url': f'/roms/{rom.sistema}/{os.path.basename(rom.caminho)}'
     }), 200
 
 @games_bp.route('/<int:rom_id>/save', methods=['POST'])
