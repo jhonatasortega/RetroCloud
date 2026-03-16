@@ -83,9 +83,27 @@ export default function PlayerPage() {
     window.EJS_gameUrl       = romFile
     window.EJS_pathtodata    = 'https://cdn.emulatorjs.org/stable/data/'
     window.EJS_startOnLoaded = true
-    window.EJS_fullscreenOnLoaded = false
     window.EJS_color         = '#66c0f4'
     window.EJS_backgroundColor = '#000000'
+    window.EJS_language      = 'en-US'
+
+    // Esconde todos os controles visuais — usamos o menu próprio do RetroCloud
+    window.EJS_controls      = { 'menubar': false }
+    window.EJS_Buttons = {
+      playPause:    false,
+      restart:      false,
+      mute:         false,
+      settings:     false,
+      fullscreen:   false,
+      saveState:    false,
+      loadState:    false,
+      screenRecord: false,
+      gamepad:      false,
+      cheat:        false,
+      volume:       false,
+      saveSavFiles: true,   // mantém save automático
+      contextMenu:  false,
+    }
 
     // Carrega o script do EmulatorJS via CDN
     const existing = document.getElementById('emulatorjs-script')
