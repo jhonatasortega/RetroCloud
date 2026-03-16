@@ -42,6 +42,7 @@ const CarouselCard = memo(function CarouselCard({ game, offset, meta, isCenter }
       }}>
         {game.thumb ? (
           <img src={game.thumb} alt={game.nome} loading="lazy" decoding="async"
+               onError={(e) => { e.target.style.display='none' }}
                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         ) : (
           <div style={{

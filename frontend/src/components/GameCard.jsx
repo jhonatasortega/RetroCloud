@@ -40,6 +40,7 @@ export default function GameCard({ game, onClick, tabIndex = 0 }) {
             alt={game.nome}
             className="game-card-img w-full h-full object-cover"
             loading="lazy"
+            onError={(e) => { e.target.parentNode.innerHTML = '<div class="w-full h-full flex items-center justify-center text-4xl">🎮</div>' }}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-3">

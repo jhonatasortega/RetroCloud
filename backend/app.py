@@ -33,9 +33,8 @@ def create_app():
         db.create_all()
         _seed_defaults()
 
-    # Inicia scheduler de capas (roda diariamente em background)
-    from utils.thumb_scraper import ThumbScheduler
-    app._thumb_scheduler = ThumbScheduler(app)
+    # ThumbScheduler desativado — busca de capas só via admin manual
+    # (scheduler causava travamento do servidor Flask)
 
     from routes.auth import auth_bp
     from routes.games import games_bp

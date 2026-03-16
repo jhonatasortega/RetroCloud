@@ -215,15 +215,7 @@ def upload_rom(current_user):
         db.session.add(nova_rom)
         db.session.commit()
 
-        # Busca thumbnail automaticamente após cadastro
-        try:
-            from routes.scraper import auto_fetch_thumb
-            local_path = auto_fetch_thumb(nova_rom)
-            if local_path:
-                nova_rom.thumb = local_path
-                db.session.commit()
-        except Exception as e:
-            current_app.logger.warning(f'Auto-thumb falhou para "{nova_rom.nome}": {e}')
+        # Auto-thumb desativado — use o botão manual no admin para buscar capas
 
         return jsonify({
             'message': 'ROM enviada com sucesso',
