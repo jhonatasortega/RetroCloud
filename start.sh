@@ -1,47 +1,41 @@
 #!/bin/bash
+set -e
 
-echo "🎮 RetroCloud M5 - Iniciando..."
+echo ""
+echo "╔══════════════════════════════════════╗"
+echo "║        RetroCloud - Iniciando        ║"
+echo "╚══════════════════════════════════════╝"
 echo ""
 
-# Verificar se Docker está instalado
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker não encontrado. Por favor, instale o Docker primeiro."
-    exit 1
+if [ ! -f ".env" ]; then
+  echo "[!] Arquivo .env não encontrado."
+  cp .env.example .env
+  echo "    IMPORTANTE: edite o .env e defina uma SECRET_KEY segura antes de usar em produção."
+  echo ""
 fi
 
-# Verificar se Docker Compose está instalado
-if ! command -v docker-compose &> /dev/null; then
-    echo "❌ Docker Compose não encontrado. Por favor, instale o Docker Compose primeiro."
-    exit 1
-fi
+mkdir -p emulatorjs/roms emulatorjs/saves emulatorjs/config emulatorjs/data
+mkdir -p backend/static/uploads/thumbs backend/static/uploads/roms
 
-# Parar containers existentes
-echo "🛑 Parando containers existentes..."
-docker-compose down
-
-# Construir e iniciar containers
-echo "🔨 Construindo e iniciando containers..."
-docker-compose up -d --build
-
-# Aguardar containers iniciarem
-echo "⏳ Aguardando containers iniciarem..."
-sleep 10
-
-# Verificar status
-echo ""
-echo "📊 Status dos containers:"
-docker-compose ps
+echo "[1/3] Construindo e iniciando containers..."
+docker compose up -d --build
 
 echo ""
-echo "✅ RetroCloud M5 iniciado com sucesso!"
+echo "[2/3] Aguardando backend inicializar..."
+sleep 5
+
 echo ""
-echo "🌐 Acesse a plataforma em:"
-echo "   Frontend: http://localhost"
-echo "   Backend API: http://localhost:5000"
-echo "   EmulatorJS: http://localhost:8080"
+echo "[3/3] Verificando serviços..."
+docker compose ps
+
 echo ""
-echo "📝 Para ver os logs:"
-echo "   docker-compose logs -f"
+echo "╔══════════════════════════════════════╗"
+echo "║         RetroCloud rodando!          ║"
+echo "╠══════════════════════════════════════╣"
+echo "║  Frontend : http://localhost         ║"
+echo "║  API      : http://localhost/api/    ║"
+echo "║                                      ║"
+echo "║  Login padrão:                       ║"
+echo "║  admin@retrocloud.local / admin      ║"
+echo "╚══════════════════════════════════════╝"
 echo ""
-echo "🛑 Para parar:"
-echo "   docker-compose down"

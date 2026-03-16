@@ -104,44 +104,51 @@ def play_game(current_user, rom_id):
 @games_bp.route('/<int:rom_id>/save', methods=['POST'])
 @token_required
 def save_game(current_user, rom_id):
-    """Salva o progresso do jogo."""
+    """Salva o progresso do jogo (dados binários base64)."""
     data = request.get_json()
-    
+
     if not data or not data.get('save_data'):
         return jsonify({'message': 'Dados do save são obrigatórios'}), 400
-    
+
     rom = Rom.query.get(rom_id)
     if not rom:
         return jsonify({'message': 'ROM não encontrada'}), 404
-    
-    # Criar diretório de saves do usuário se não existir
+
     save_dir = f'/emulatorjs/saves/user_{current_user.id}/{rom.sistema}'
     os.makedirs(save_dir, exist_ok=True)
-    
-    # Salvar arquivo
+
     save_filename = f'{os.path.splitext(os.path.basename(rom.caminho))[0]}.sav'
     save_path = os.path.join(save_dir, save_filename)
-    
+
     try:
-        # Aqui você salvaria os dados do save
-        # Por simplicidade, vamos apenas registrar no banco
-        
-        # Verificar se já existe um save
+        import base64
+        raw = base64.b64decode(data['save_data'])
+        with open(save_path, 'wb') as f:
+            f.write(raw)
+
         existing_save = Save.query.filter_by(user_id=current_user.id, rom_id=rom_id).first()
-        
         if existing_save:
             existing_save.caminho = save_path
         else:
-            novo_save = Save(
-                user_id=current_user.id,
-                rom_id=rom_id,
-                caminho=save_path
-            )
+            novo_save = Save(user_id=current_user.id, rom_id=rom_id, caminho=save_path)
             db.session.add(novo_save)
-        
+
         db.session.commit()
         return jsonify({'message': 'Save realizado com sucesso', 'save_path': save_path}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': 'Erro ao salvar jogo', 'error': str(e)}), 500
+
+
+@games_bp.route('/<int:rom_id>/save', methods=['GET'])
+@token_required
+def load_game(current_user, rom_id):
+    """Carrega o save do jogo em base64."""
+    import base64
+    save = Save.query.filter_by(user_id=current_user.id, rom_id=rom_id).first()
+    if not save or not os.path.exists(save.caminho):
+        return jsonify({'save_data': None}), 200
+    with open(save.caminho, 'rb') as f:
+        encoded = base64.b64encode(f.read()).decode('utf-8')
+    return jsonify({'save_data': encoded}), 200
 

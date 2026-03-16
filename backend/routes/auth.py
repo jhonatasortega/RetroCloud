@@ -58,12 +58,12 @@ def login():
     if not bcrypt.checkpw(data['senha'].encode('utf-8'), user.senha_hash.encode('utf-8')):
         return jsonify({'message': 'Credenciais inválidas'}), 401
     
-    # Verificar limite de sessões simultâneas
+    # Verificar limite de sessões simultâneas POR USUÁRIO
     config = SystemConfig.query.first()
     if config:
-        active_sessions = Session.query.filter_by(ativo=True).count()
+        active_sessions = Session.query.filter_by(user_id=user.id, ativo=True).count()
         if active_sessions >= config.max_sessions:
-            return jsonify({'message': 'Limite de sessões simultâneas atingido'}), 429
+            return jsonify({'message': 'Limite de sessões simultâneas atingido para este usuário'}), 429
     
     # Gerar token
     token = generate_token(user.id)

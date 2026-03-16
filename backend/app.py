@@ -3,58 +3,73 @@ from flask_cors import CORS
 from models import db
 import os
 
+
 def create_app():
     app = Flask(__name__)
-    
-    # Configurações
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+    if not app.config['SECRET_KEY']:
+        raise RuntimeError('SECRET_KEY não definida. Copie .env.example para .env e preencha.')
+
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///database.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB para ROMs grandes
+    app.config['MAX_CONTENT_LENGTH'] = 600 * 1024 * 1024  # 600 MB para ISOs de PS1
     app.config['UPLOAD_FOLDER'] = '/app/static/uploads'
-    
-    # Inicializar extensões
-    CORS(app, resources={r"/*": {"origins": "*"}})
+    app.config['THEGAMESDB_API_KEY'] = os.getenv('THEGAMESDB_API_KEY', '')
+    app.config['SCREENSCRAPER_USER'] = os.getenv('SCREENSCRAPER_USER', '')
+    app.config['SCREENSCRAPER_PASS'] = os.getenv('SCREENSCRAPER_PASS', '')
+    app.config['EMULATION_MODE'] = os.getenv('EMULATION_MODE', 'local')
+
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
     db.init_app(app)
-    
-    # Criar diretórios necessários
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'thumbs'), exist_ok=True)
-    os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], 'roms'), exist_ok=True)
-    
-    # Criar tabelas do banco de dados
+
+    for folder in ['thumbs', 'roms']:
+        os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], folder), exist_ok=True)
+
     with app.app_context():
         db.create_all()
-        
-        # Criar configuração padrão do sistema se não existir
-        from models import SystemConfig
-        if not SystemConfig.query.first():
-            config = SystemConfig(
-                max_sessions=5,
-                session_time_limit=60,
-                time_limit_enabled=False
-            )
-            db.session.add(config)
-            db.session.commit()
-    
-    # Registrar blueprints
+        _seed_defaults()
+
     from routes.auth import auth_bp
     from routes.games import games_bp
     from routes.admin import admin_bp
     from routes.system import system_bp
-    
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(games_bp, url_prefix='/api/games')
-    app.register_blueprint(admin_bp, url_prefix='/api/admin')
-    app.register_blueprint(system_bp, url_prefix='/api/system')
-    
-    @app.route('/')
+    from routes.scraper import scraper_bp
+    from routes.stream import stream_bp
+
+    app.register_blueprint(auth_bp,    url_prefix='/api/auth')
+    app.register_blueprint(games_bp,   url_prefix='/api/games')
+    app.register_blueprint(admin_bp,   url_prefix='/api/admin')
+    app.register_blueprint(system_bp,  url_prefix='/api/system')
+    app.register_blueprint(scraper_bp, url_prefix='/api/scraper')
+    app.register_blueprint(stream_bp,  url_prefix='/api/stream')
+
+    @app.route('/api/')
     def index():
-        return {'message': 'RetroCloud M5 API', 'status': 'online'}
-    
+        return {'message': 'RetroCloud API', 'status': 'online', 'emulation_mode': app.config['EMULATION_MODE']}
+
     return app
+
+
+def _seed_defaults():
+    """Cria dados iniciais se o banco estiver vazio."""
+    from models import SystemConfig, User
+    import bcrypt
+
+    if not SystemConfig.query.first():
+        db.session.add(SystemConfig(max_sessions=5, session_time_limit=120, time_limit_enabled=False))
+        db.session.commit()
+
+    # Cria usuário admin padrão se não houver nenhum admin
+    if not User.query.filter_by(is_admin=True).first():
+        senha_hash = bcrypt.hashpw(b'admin', bcrypt.gensalt()).decode('utf-8')
+        admin = User(nome='Admin', email='admin@retrocloud.local', senha_hash=senha_hash, is_admin=True)
+        db.session.add(admin)
+        db.session.commit()
+        print('[RetroCloud] Usuário admin criado: admin@retrocloud.local / admin')
+
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=os.getenv('FLASK_ENV') == 'development')
 
