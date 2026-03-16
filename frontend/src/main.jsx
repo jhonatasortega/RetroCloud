@@ -37,10 +37,19 @@ function AdminRoute({ children }) {
 function AppRoutes() {
   const { user } = useAuth()
 
+  // Detecta se é TV: só tem controle, sem mouse nem touch
+  const isTV = () => {
+    const hasGamepad = [...(navigator.getGamepads?.() || [])].some(Boolean)
+    const hasTouch   = navigator.maxTouchPoints > 0
+    const hasMouse   = window.matchMedia('(pointer: fine)').matches
+    return hasGamepad && !hasTouch && !hasMouse
+  }
+
   // RetroVision ativo se: controle conectado OU voltou de um jogo com ?rv=1
   const [retroVision, setRetroVision] = useState(() => {
     return new URLSearchParams(window.location.search).get('rv') === '1'
   })
+  const [tvMode, setTvMode] = useState(false)
 
   useEffect(() => {
     // Limpa o ?rv=1 da URL sem reload
@@ -49,16 +58,25 @@ function AppRoutes() {
     }
 
     const onConnect    = () => {
-      if (!window.location.pathname.startsWith('/play/')) setRetroVision(true)
+      if (!window.location.pathname.startsWith('/play/')) {
+        setRetroVision(true)
+        setTvMode(isTV())
+      }
     }
-    const onDisconnect = () => setRetroVision(false)
-    const onKey        = (e) => { if (e.key === 'Escape') setRetroVision(false) }
+    const onDisconnect = () => {
+      setRetroVision(false)
+      setTvMode(false)
+    }
+    const onKey        = (e) => { if (e.key === 'Escape' && !tvMode) setRetroVision(false) }
 
     window.addEventListener('gamepadconnected',    onConnect)
     window.addEventListener('gamepaddisconnected', onDisconnect)
     window.addEventListener('keydown',             onKey)
 
-    if ([...(navigator.getGamepads?.() || [])].some(Boolean)) setRetroVision(true)
+    if ([...(navigator.getGamepads?.() || [])].some(Boolean)) {
+      setRetroVision(true)
+      setTvMode(isTV())
+    }
 
     return () => {
       window.removeEventListener('gamepadconnected',    onConnect)
@@ -76,8 +94,9 @@ function AppRoutes() {
   if (retroVision && user) {
     return (
       <RetroVisionPage
-        onExit={() => setRetroVision(false)}
+        onExit={tvMode ? null : () => setRetroVision(false)}
         onLaunch={handleLaunch}
+        tvMode={tvMode}
       />
     )
   }

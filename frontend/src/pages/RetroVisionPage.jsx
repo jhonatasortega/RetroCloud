@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback, memo } from 'react'
-import { api } from '@/lib/api'
+import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { api } from '@/lib/api'
 
 const SYSTEM_META = {
   snes:      { label: 'Super Nintendo',  color: '#7c3aed', glow: '#a855f7', emoji: '🎮' },
@@ -16,37 +16,42 @@ const SYSTEM_META = {
   nes:       { label: 'NES',             color: '#9f1239', glow: '#f43f5e', emoji: '🔴' },
 }
 const DEFAULT_META = { label: 'Outros', color: '#4b5563', glow: '#9ca3af', emoji: '🎮' }
-const MENU_BTNS = [16] // Apenas Guide/PS
+const GUIDE = [16]
+const VISIBLE_RANGE = 3 // quantos cards de cada lado renderizar
 
-// ── Card memoizado — não re-renderiza ao mudar gameIdx ──────────────────────
-const CarouselCard = memo(function CarouselCard({ game, offset, meta, isCenter, onClick }) {
+// Card memoizado com onClick estável via data-idx
+const CarouselCard = memo(function CarouselCard({ game, offset, meta, isCenter }) {
+  const abs = Math.abs(offset)
   return (
-    <div onClick={onClick} style={{
-      position: 'absolute', cursor: 'pointer',
-      transition: 'all 0.35s cubic-bezier(0.34,1.2,0.64,1)',
-      transform: `translateX(${offset * 230}px) translateZ(${isCenter ? 50 : -Math.abs(offset) * 100}px) rotateY(${offset * -14}deg) scale(${isCenter ? 1 : Math.max(0.5, 1 - Math.abs(offset) * 0.2)})`,
-      opacity: isCenter ? 1 : Math.max(0.2, 1 - Math.abs(offset) * 0.3),
-      zIndex: 10 - Math.abs(offset),
+    <div data-cardidx={game.id} style={{
+      position: 'absolute',
+      cursor: 'pointer',
+      transition: 'transform 0.3s cubic-bezier(0.34,1.2,0.64,1), opacity 0.3s ease',
+      transform: `translateX(${offset * 220}px) translateZ(${isCenter ? 50 : -abs * 80}px) rotateY(${offset * -12}deg) scale(${isCenter ? 1 : Math.max(0.52, 1 - abs * 0.18)})`,
+      opacity: isCenter ? 1 : Math.max(0.25, 1 - abs * 0.25),
+      zIndex: 10 - abs,
       transformStyle: 'preserve-3d',
     }}>
       <div style={{
-        width: isCenter ? 210 : 160, height: isCenter ? 280 : 210,
-        borderRadius: 14, overflow: 'hidden', transition: 'all 0.35s ease',
+        width: isCenter ? 200 : 155,
+        height: isCenter ? 270 : 205,
+        borderRadius: 14, overflow: 'hidden',
         boxShadow: isCenter ? `0 0 50px ${meta.glow}60, 0 20px 50px rgba(0,0,0,0.9)` : '0 8px 30px rgba(0,0,0,0.7)',
         border: isCenter ? `2px solid ${meta.glow}50` : '1px solid #ffffff08',
+        background: '#111',
       }}>
-        {game.thumb && Math.abs(offset) <= 2 ? (
+        {game.thumb ? (
           <img src={game.thumb} alt={game.nome} loading="lazy" decoding="async"
-               style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         ) : (
           <div style={{
             width: '100%', height: '100%',
             background: `linear-gradient(135deg, ${meta.color}30, #000)`,
             display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', gap: 10, padding: 12,
+            alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12,
           }}>
-            <span style={{ fontSize: 40 }}>{meta.emoji}</span>
-            <span style={{ color: '#fff', fontSize: 12, textAlign: 'center', fontWeight: 600, lineHeight: 1.3 }}>{game.nome}</span>
+            <span style={{ fontSize: 36 }}>{meta.emoji}</span>
+            <span style={{ color: '#fff', fontSize: 11, textAlign: 'center', fontWeight: 600, lineHeight: 1.3 }}>{game.nome}</span>
           </div>
         )}
       </div>
@@ -54,53 +59,57 @@ const CarouselCard = memo(function CarouselCard({ game, offset, meta, isCenter, 
   )
 })
 
-// ── Página principal ────────────────────────────────────────────────────────
-export default function RetroVisionPage({ onExit, onLaunch }) {
+export default function RetroVisionPage({ onExit, onLaunch, tvMode = false }) {
   const { logout } = useAuth()
 
-  const [allGames, setAllGames]   = useState([])
-  const [systems, setSystems]     = useState([])
-  const [sysIdx, setSysIdx]       = useState(0)
-  const [gameIdx, setGameIdx]     = useState(0)
-  const [launching, setLaunching] = useState(false)
-  const [launchGame, setLaunchGame] = useState(null)
-  const [menuOpen, setMenuOpen]   = useState(false)
-  const [menuIdx, setMenuIdx]     = useState(0)
+  const [allGames, setAllGames]     = useState([])
+  const [systems, setSystems]       = useState([])
+  const [sysIdx, setSysIdx]         = useState(0)
+  const [gameIdx, setGameIdx]       = useState(0)
+  const [launching, setLaunching]   = useState(false)
+  const [menuOpen, setMenuOpen]     = useState(false)
+  const [menuIdx, setMenuIdx]       = useState(0)
   const [introPhase, setIntroPhase] = useState('in')
   const [confirmExit, setConfirmExit] = useState(false)
+  const [confirmSel, setConfirmSel]   = useState(0)  // 0=Sair, 1=Cancelar
 
-  const animRef   = useRef(null)
-  const prevBtns  = useRef({})
-  const prevAxes  = useRef({})
-  const heldTime  = useRef({})
-  const navStart  = useRef(0)  // timestamp início de navegação contínua
-  const currentGameRef = useRef(null)
+  const animRef    = useRef(null)
+  const prevBtns   = useRef({})
+  const prevAxes   = useRef({})
+  const heldRef    = useRef({})   // timers de repeat por botão
+  const navStart   = useRef(0)    // para skip de letra
 
   // Confirmação de saída
-  const tryExit = useCallback(() => {
-    setConfirmExit(true)
-    setTimeout(() => setConfirmExit(false), 3000)
-  }, [])
+  const tryExit = useCallback(() => { if (!tvMode) { setConfirmExit(true); setConfirmSel(0) } }, [tvMode])
+  const cancelExit = useCallback(() => setConfirmExit(false), [])
+  const confirmExitNow = useCallback(() => { setConfirmExit(false); onExit?.() }, [onExit])
 
-  const confirmExitNow = useCallback(() => {
-    setConfirmExit(false)
-    onExit?.()
-  }, [onExit])
-
-  // Intro cinematográfica
+  // Intro
   useEffect(() => {
-    const t = setTimeout(() => setIntroPhase('done'), 1800)
+    const t = setTimeout(() => setIntroPhase('done'), 1600)
     return () => clearTimeout(t)
   }, [])
 
-  // ESC
+  // ESC — só abre confirmação, nunca confirma
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') confirmExit ? confirmExitNow() : tryExit()
+    const fn = (e) => { if (e.key === 'Escape') tryExit() }
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [tryExit])
+
+  // Setas do teclado para navegar
+  useEffect(() => {
+    const fn = (e) => {
+      if (menuOpen || confirmExit) return
+      if (e.key === 'ArrowLeft')  setGameIdx(i => Math.max(0, i - 1))
+      if (e.key === 'ArrowRight') setGameIdx(i => Math.min(i + 1, filteredGamesRef.current.length - 1))
+      if (e.key === 'ArrowUp')    setSysIdx(i => Math.max(0, i - 1))
+      if (e.key === 'ArrowDown')  setSysIdx(i => i + 1)
+      if (e.key === 'Enter')      doLaunch()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [confirmExit, tryExit, confirmExitNow])
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [menuOpen, confirmExit])
 
   // Carrega jogos
   useEffect(() => {
@@ -111,125 +120,173 @@ export default function RetroVisionPage({ onExit, onLaunch }) {
     })
   }, [])
 
-  const currentSystem = systems[sysIdx]
-  const filteredGames = allGames.filter(g => g.sistema?.toLowerCase() === currentSystem)
-  const currentGame   = filteredGames[gameIdx]
+  const currentSystem = systems[sysIdx % Math.max(1, systems.length)]
+  const filteredGames = useMemo(
+    () => allGames.filter(g => g.sistema?.toLowerCase() === currentSystem),
+    [allGames, currentSystem]
+  )
+  const filteredGamesRef = useRef(filteredGames)
+  useEffect(() => { filteredGamesRef.current = filteredGames }, [filteredGames])
+
+  const safeGameIdx = Math.min(gameIdx, Math.max(0, filteredGames.length - 1))
+  const currentGame = filteredGames[safeGameIdx]
   const meta = SYSTEM_META[currentSystem] || DEFAULT_META
 
   useEffect(() => { setGameIdx(0) }, [sysIdx])
-  useEffect(() => { currentGameRef.current = currentGame }, [currentGame])
 
-  const launchCurrent = useCallback(() => {
-    const game = currentGameRef.current
+  // Só os cards visíveis — máximo 7 elementos no DOM
+  const visibleCards = useMemo(() => {
+    const cards = []
+    for (let i = safeGameIdx - VISIBLE_RANGE; i <= safeGameIdx + VISIBLE_RANGE; i++) {
+      if (i >= 0 && i < filteredGames.length) {
+        cards.push({ game: filteredGames[i], offset: i - safeGameIdx, idx: i })
+      }
+    }
+    return cards
+  }, [filteredGames, safeGameIdx])
+
+  // Launch
+  const doLaunch = useCallback(() => {
+    const game = filteredGamesRef.current[safeGameIdx]  // usa ref para não criar closure
     if (!game || launching) return
-    setLaunchGame(game)
     setLaunching(true)
-    setTimeout(() => onLaunch?.(game.id), 700)
-  }, [launching, onLaunch])
+    setTimeout(() => onLaunch?.(game.id), 600)
+  }, [launching, onLaunch, safeGameIdx])
 
-  const menuItems = [
-    { icon: '▶', label: 'Continuar jogando', action: () => setMenuOpen(false) },
-    { icon: '🖥', label: 'Modo Desktop',      action: () => { setMenuOpen(false); tryExit() } },
-    { icon: '⏻',  label: 'Sair da conta',     action: () => { logout(); window.location.href = '/login' } },
-  ]
+  const menuItems = useMemo(() => [
+    { icon: '▶', label: 'Continuar',      action: () => setMenuOpen(false) },
+    ...(!tvMode ? [{ icon: '🖥', label: 'Modo Desktop', action: () => { setMenuOpen(false); tryExit() } }] : []),
+    { icon: '⏻',  label: 'Sair da conta',  action: () => { logout(); window.location.href = '/login' } },
+  ], [tryExit, logout, tvMode])
 
-  // Poll gamepad com repeat correto
+  // Click no card via delegação — não passa onClick como prop
+  const handleCarouselClick = useCallback((e) => {
+    const card = e.target.closest('[data-cardidx]')
+    if (!card) return
+    const gameId = card.dataset.cardidx
+    const idx = filteredGamesRef.current.findIndex(g => String(g.id) === gameId)
+    if (idx === safeGameIdx) doLaunch()
+    else if (idx >= 0) setGameIdx(idx)
+  }, [safeGameIdx, doLaunch])
+
+  // Repeat helper — dispara imediatamente, depois 400ms delay, depois 120ms
+  const repeatFire = useCallback((key, fn) => {
+    const h = heldRef.current
+    if (!h[key]) return
+    const now = performance.now()
+    if (!h[`${key}_start`]) { h[`${key}_start`] = now; fn(); return }
+    if (!h[`${key}_last`])  { h[`${key}_last`]  = now }
+    const held   = now - h[`${key}_start`]
+    const since  = now - h[`${key}_last`]
+    if (held > 400 && since > 120) { h[`${key}_last`] = now; fn() }
+  }, [])
+
+  // Poll gamepad
   const poll = useCallback(() => {
-    const gps = navigator.getGamepads?.() || []
+    const gps  = navigator.getGamepads?.() || []
     const now  = performance.now()
 
     for (const gp of gps) {
       if (!gp) continue
       const prev  = prevBtns.current[gp.index] || {}
-      const pAxes = prevAxes.current[gp.index] || {}
+      const pAxes = prevAxes.current[gp.index] || { ax: 0, ay: 0 }
+      const h     = heldRef.current
 
-      const isDown  = (i) => !!gp.buttons[i]?.pressed
-      const justDown = (i) => isDown(i) && !prev[i]
+      const dn = (i) => !!gp.buttons[i]?.pressed
+      const jd = (i) => dn(i) && !prev[i]  // just down
+      const ju = (i) => !dn(i) && !!prev[i] // just up
 
-      // Repeat: imediato no primeiro, delay 400ms, depois 130ms
-      const repeatFire = (i) => {
-        if (!isDown(i)) { heldTime.current[i] = 0; return false }
-        if (justDown(i)) { heldTime.current[i] = now; heldTime.current[`r${i}`] = now; return true }
-        if ((now - heldTime.current[i]) > 400 && (now - (heldTime.current[`r${i}`] || 0)) > 130) {
-          heldTime.current[`r${i}`] = now; return true
-        }
-        return false
-      }
+      const ax = gp.axes[0] || 0
+      const ay = gp.axes[1] || 0
 
-      const axFire = (dir) => {
-        const k = `ax${dir}`
-        const active = dir === 'L' ? gp.axes[0] < -0.5 : gp.axes[0] > 0.5
-        const wasActive = dir === 'L' ? pAxes.ax < -0.5 : pAxes.ax > 0.5
-        if (!active) { heldTime.current[k] = 0; return false }
-        if (!wasActive) { heldTime.current[k] = now; heldTime.current[`r${k}`] = now; return true }
-        if ((now - (heldTime.current[k] || 0)) > 400 && (now - (heldTime.current[`r${k}`] || 0)) > 130) {
-          heldTime.current[`r${k}`] = now; return true
-        }
-        return false
-      }
+      // Atualiza held state
+      ;[4,5,12,13,14,15].forEach(i => {
+        if (jd(i)) { h[i] = true; h[`${i}_start`] = 0; h[`${i}_last`] = 0 }
+        if (ju(i)) { h[i] = false; h[`${i}_start`] = 0; h[`${i}_last`] = 0 }
+      })
+      // Analógico
+      if (ax < -0.5 && !(pAxes.ax < -0.5)) { h.axL = true;  h.axL_start = 0; h.axL_last = 0 }
+      if (ax >= -0.5 && pAxes.ax < -0.5)   { h.axL = false; h.axL_start = 0; h.axL_last = 0 }
+      if (ax > 0.5  && !(pAxes.ax > 0.5))  { h.axR = true;  h.axR_start = 0; h.axR_last = 0 }
+      if (ax <= 0.5 && pAxes.ax > 0.5)     { h.axR = false; h.axR_start = 0; h.axR_last = 0 }
 
       if (menuOpen) {
-        if (repeatFire(13)) setMenuIdx(i => Math.min(i + 1, menuItems.length - 1))
-        if (repeatFire(12)) setMenuIdx(i => Math.max(i - 1, 0))
-        if (justDown(0)) menuItems[menuIdx]?.action()
-        if (justDown(1) || MENU_BTNS.some(justDown)) setMenuOpen(false)
+        if (jd(12) || (ay < -0.5 && pAxes.ay >= -0.5)) setMenuIdx(i => Math.max(0, i - 1))
+        if (jd(13) || (ay > 0.5  && pAxes.ay <= 0.5))  setMenuIdx(i => Math.min(i + 1, menuItems.length - 1))
+        if (jd(0)) menuItems[menuIdx]?.action()
+        if (jd(1) || GUIDE.some(jd)) setMenuOpen(false)
+
       } else if (confirmExit) {
-        if (justDown(0)) confirmExitNow()    // A confirma
-        if (justDown(1) || justDown(2)) setConfirmExit(false) // B/X cancela
+        // Navega entre Sair e Cancelar
+        if (jd(14) || jd(15) || (ax < -0.5 && pAxes.ax >= -0.5) || (ax > 0.5 && pAxes.ax <= 0.5))
+          setConfirmSel(s => s === 0 ? 1 : 0)
+        if (jd(0)) { if (confirmSel === 0) confirmExitNow(); else cancelExit() }
+        if (jd(1) || jd(2)) cancelExit()
+
       } else {
-        if (repeatFire(4)) setSysIdx(i => Math.max(i - 1, 0))
-        if (repeatFire(5)) setSysIdx(i => Math.min(i + 1, systems.length - 1))
+        // LB/RB — troca sistema com repeat
+        repeatFire(4, () => setSysIdx(i => Math.max(0, i - 1)))
+        repeatFire(5, () => setSysIdx(i => i + 1))
 
-        const goL = repeatFire(14) || axFire('L')
-        const goR = repeatFire(15) || axFire('R')
-
-        if (goL) {
+        // D-pad esq/dir + analógico — navega com repeat e skip de letra
+        const goLeft = () => {
           setGameIdx(cur => {
+            const games = filteredGamesRef.current
             const held = now - (navStart.current || now)
             if (held > 1500 && cur > 0) {
-              const curLetter = filteredGames[cur]?.nome?.[0]?.toUpperCase() || ''
+              const curL = games[cur]?.nome?.[0]?.toUpperCase() || ''
               for (let i = cur - 1; i >= 0; i--) {
-                const l = filteredGames[i]?.nome?.[0]?.toUpperCase()
-                if (l < curLetter) {
-                  const first = filteredGames.findIndex(g => g.nome?.[0]?.toUpperCase() === l)
+                const l = games[i]?.nome?.[0]?.toUpperCase()
+                if (l && l < curL) {
+                  const first = games.findIndex(g => g.nome?.[0]?.toUpperCase() === l)
                   navStart.current = now
                   return first >= 0 ? first : i
                 }
               }
-              navStart.current = now
-              return 0
+              navStart.current = now; return 0
             }
             return Math.max(0, cur - 1)
           })
         }
-        if (goR) {
+        const goRight = () => {
           setGameIdx(cur => {
+            const games = filteredGamesRef.current
             const held = now - (navStart.current || now)
-            if (held > 1500 && cur < filteredGames.length - 1) {
-              const curLetter = filteredGames[cur]?.nome?.[0]?.toUpperCase() || ''
-              const jumpIdx = filteredGames.findIndex((g, i) => i > cur && (g.nome?.[0]?.toUpperCase() || '') > curLetter)
+            if (held > 1500 && cur < games.length - 1) {
+              const curL = games[cur]?.nome?.[0]?.toUpperCase() || ''
+              const idx  = games.findIndex((g, i) => i > cur && (g.nome?.[0]?.toUpperCase() || '') > curL)
               navStart.current = now
-              return jumpIdx >= 0 ? jumpIdx : filteredGames.length - 1
+              return idx >= 0 ? idx : games.length - 1
             }
-            return Math.min(cur + 1, filteredGames.length - 1)
+            return Math.min(cur + 1, games.length - 1)
           })
         }
-        if (goL || goR) { if (!navStart.current) navStart.current = now }
-        else { navStart.current = 0 }
 
-        if (justDown(12) || (gp.axes[1] < -0.5 && !(pAxes.ay < -0.5))) setSysIdx(i => Math.max(i - 1, 0))
-        if (justDown(13) || (gp.axes[1] >  0.5 && !(pAxes.ay >  0.5))) setSysIdx(i => Math.min(i + 1, systems.length - 1))
+        repeatFire(14,  goLeft)
+        repeatFire(15,  goRight)
+        repeatFire('axL', goLeft)
+        repeatFire('axR', goRight)
 
-        if (justDown(0)) launchCurrent()
-        if (MENU_BTNS.some(justDown)) { setMenuOpen(true); setMenuIdx(0) }
-        if (justDown(1)) tryExit()
+        if (h[14] || h[15] || h.axL || h.axR) {
+          if (!navStart.current) navStart.current = now
+        } else {
+          navStart.current = 0
+        }
+
+        // D-pad cima/baixo — troca sistema
+        if (jd(12) || (ay < -0.5 && pAxes.ay >= -0.5)) setSysIdx(i => Math.max(0, i - 1))
+        if (jd(13) || (ay > 0.5  && pAxes.ay <= 0.5))  setSysIdx(i => i + 1)
+
+        if (jd(0)) doLaunch()
+        if (GUIDE.some(jd)) { setMenuOpen(true); setMenuIdx(0) }
+        if (jd(1) && !tvMode) tryExit()
       }
 
       prevBtns.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
-      prevAxes.current[gp.index] = { ax: gp.axes[0], ay: gp.axes[1] }
+      prevAxes.current[gp.index] = { ax, ay }
     }
     animRef.current = requestAnimationFrame(poll)
-  }, [menuOpen, menuIdx, systems, filteredGames, launchCurrent, menuItems, confirmExit, confirmExitNow, tryExit])
+  }, [menuOpen, menuIdx, confirmExit, confirmSel, menuItems, doLaunch, tryExit, cancelExit, confirmExitNow, repeatFire])
 
   useEffect(() => {
     animRef.current = requestAnimationFrame(poll)
@@ -238,18 +295,17 @@ export default function RetroVisionPage({ onExit, onLaunch }) {
 
   // ── Intro ──
   if (introPhase === 'in') return (
-    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center"
-         style={{ animation: 'rvFI 0.4s ease forwards' }}>
-      <div style={{ animation: 'rvLI 0.7s cubic-bezier(0.34,1.56,0.64,1) 0.2s both' }}>
-        <div style={{ fontSize: 72, textAlign: 'center', marginBottom: 16 }}>🎮</div>
-        <h1 style={{ color: '#fff', fontSize: 40, fontWeight: 800, letterSpacing: 8, textAlign: 'center', textTransform: 'uppercase', textShadow: '0 0 40px rgba(102,192,244,0.8)' }}>RetroCloud</h1>
-        <div style={{ height: 2, background: 'linear-gradient(to right, transparent, #66c0f4, transparent)', marginTop: 12, animation: 'rvLine 0.8s ease 0.7s both', transform: 'scaleX(0)', transformOrigin: 'center' }} />
-        <p style={{ color: '#66c0f4', fontSize: 12, textAlign: 'center', marginTop: 10, letterSpacing: 6, textTransform: 'uppercase', opacity: 0, animation: 'rvFI 0.5s ease 1.1s forwards' }}>RetroVision</p>
+    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center">
+      <div style={{ animation: 'rvIn 0.7s cubic-bezier(0.34,1.56,0.64,1) 0.2s both' }}>
+        <div style={{ fontSize: 64, textAlign: 'center', marginBottom: 12 }}>🎮</div>
+        <h1 style={{ color: '#fff', fontSize: 38, fontWeight: 800, letterSpacing: 8, textAlign: 'center', textTransform: 'uppercase', textShadow: '0 0 40px rgba(102,192,244,0.8)' }}>RetroCloud</h1>
+        <div style={{ height: 2, background: 'linear-gradient(to right, transparent, #66c0f4, transparent)', marginTop: 10, animation: 'rvLine 0.8s ease 0.7s both', transform: 'scaleX(0)', transformOrigin: 'center' }} />
+        <p style={{ color: '#66c0f4', fontSize: 11, textAlign: 'center', marginTop: 8, letterSpacing: 6, textTransform: 'uppercase', opacity: 0, animation: 'rvFade 0.5s ease 1.1s forwards' }}>RetroVision</p>
       </div>
       <style>{`
-        @keyframes rvFI   { from{opacity:0} to{opacity:1} }
-        @keyframes rvLI   { from{opacity:0;transform:scale(0.8)} to{opacity:1;transform:scale(1)} }
+        @keyframes rvIn   { from{opacity:0;transform:scale(0.85)} to{opacity:1;transform:scale(1)} }
         @keyframes rvLine { from{transform:scaleX(0)} to{transform:scaleX(1)} }
+        @keyframes rvFade { from{opacity:0} to{opacity:1} }
       `}</style>
     </div>
   )
@@ -263,100 +319,102 @@ export default function RetroVisionPage({ onExit, onLaunch }) {
   return (
     <div className="fixed inset-0 overflow-hidden select-none" style={{ background: '#0a0a0f' }}>
 
-      {/* Glow e fundo */}
+      {/* Fundo */}
       <div className="absolute inset-0 pointer-events-none transition-all duration-700"
-           style={{ background: `radial-gradient(ellipse 80% 60% at 50% 35%, ${meta.glow}18 0%, transparent 70%)` }} />
+           style={{ background: `radial-gradient(ellipse 80% 60% at 50% 35%, ${meta.glow}15 0%, transparent 70%)` }} />
       {currentGame?.thumb && (
-        <div className="absolute inset-0 pointer-events-none"
-             style={{ backgroundImage: `url(${currentGame.thumb})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: 'blur(60px) saturate(1.5)', opacity: 0.07 }} />
+        <div className="absolute inset-0 pointer-events-none" style={{
+          backgroundImage: `url(${currentGame.thumb})`, backgroundSize: 'cover',
+          backgroundPosition: 'center', filter: 'blur(60px) saturate(1.5)', opacity: 0.06,
+        }} />
       )}
 
       {/* Sistemas */}
-      <div className="relative z-10 pt-6 pb-2">
+      <div className="relative z-10 pt-5 pb-1">
         <div className="flex items-end justify-center gap-1 px-4 flex-wrap">
           {systems.map((sys, i) => {
             const m = SYSTEM_META[sys] || DEFAULT_META
-            const active = i === sysIdx
+            const active = i === sysIdx % systems.length
             return (
-              <button key={sys} onClick={() => setSysIdx(i)}
-                className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all duration-200"
-                style={{
-                  background: active ? `${m.color}35` : 'transparent',
-                  border: `1px solid ${active ? m.glow : 'transparent'}`,
-                  transform: active ? 'scale(1.08)' : 'scale(0.88)',
-                }}>
-                <span style={{ fontSize: active ? 24 : 18 }}>{m.emoji}</span>
-                <span style={{ fontSize: 10, color: active ? '#fff' : '#ffffff50', fontWeight: active ? 700 : 400, whiteSpace: 'nowrap' }}>{m.label}</span>
+              <button key={sys} onClick={() => setSysIdx(i)} style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                padding: '6px 12px', borderRadius: 12, border: `1px solid ${active ? m.glow : 'transparent'}`,
+                background: active ? `${m.color}30` : 'transparent',
+                transform: active ? 'scale(1.08)' : 'scale(0.88)',
+                transition: 'all 0.2s', cursor: 'pointer',
+              }}>
+                <span style={{ fontSize: active ? 22 : 17 }}>{m.emoji}</span>
+                <span style={{ fontSize: 9, color: active ? '#fff' : '#ffffff45', fontWeight: active ? 700 : 400, whiteSpace: 'nowrap' }}>{m.label}</span>
               </button>
             )
           })}
         </div>
-        <p className="text-center mt-1" style={{ color: '#ffffff25', fontSize: 10 }}>LB ◀ sistema ▶ RB</p>
+        <p style={{ textAlign: 'center', color: '#ffffff20', fontSize: 9, marginTop: 4 }}>
+          LB ◀ sistema ▶ RB · ↑↓ D-pad
+        </p>
       </div>
 
-      {/* Carrossel */}
+      {/* Carrossel — só renderiza cards visíveis */}
       <div className="relative z-10 flex items-center justify-center"
-           style={{ height: 'calc(100vh - 220px)', perspective: '1200px' }}>
+           style={{ height: 'calc(100vh - 210px)', perspective: '1200px' }}
+           onClick={handleCarouselClick}>
         {filteredGames.length === 0 ? (
-          <p style={{ color: '#ffffff40' }}>Nenhum jogo neste sistema</p>
+          <p style={{ color: '#ffffff30' }}>Nenhum jogo neste sistema</p>
         ) : (
           <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {filteredGames.map((game, i) => {
-              const offset = i - gameIdx
-              if (Math.abs(offset) > 3) return null
-              return (
-                <CarouselCard
-                  key={game.id}
-                  game={game}
-                  offset={offset}
-                  meta={meta}
-                  isCenter={offset === 0}
-                  onClick={() => offset === 0 ? launchCurrent() : setGameIdx(i)}
-                />
-              )
-            })}
+            {visibleCards.map(({ game, offset }) => (
+              <CarouselCard key={game.id} game={game} offset={offset} meta={meta} isCenter={offset === 0} />
+            ))}
           </div>
         )}
       </div>
 
       {/* Info rodapé */}
       {currentGame && (
-        <div className="absolute bottom-0 left-0 right-0 z-20"
-             style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 100%)', paddingTop: 60, paddingBottom: 24, textAlign: 'center' }}>
-          <h2 style={{ color: '#fff', fontSize: 26, fontWeight: 700, marginBottom: 4, textShadow: `0 0 20px ${meta.glow}` }}>{currentGame.nome}</h2>
-          <p style={{ color: '#ffffff60', fontSize: 13, marginBottom: 16 }}>{meta.label} · {gameIdx + 1} / {filteredGames.length}</p>
-          <button onClick={launchCurrent}
-            style={{ background: `linear-gradient(135deg, ${meta.color}, ${meta.glow})`, color: '#fff', border: 'none', borderRadius: 10, padding: '11px 28px', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: `0 4px 16px ${meta.glow}50` }}>
-            ▶ Jogar
-          </button>
-          <p style={{ color: '#ffffff25', fontSize: 11, marginTop: 10 }}>◀▶ navegar · A jogar · Guide menu · B sair</p>
+        <div className="absolute bottom-0 left-0 right-0 z-20" style={{
+          background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 100%)',
+          paddingTop: 50, paddingBottom: 20, textAlign: 'center',
+        }}>
+          <h2 style={{ color: '#fff', fontSize: 24, fontWeight: 700, marginBottom: 3, textShadow: `0 0 20px ${meta.glow}` }}>
+            {currentGame.nome}
+          </h2>
+          <p style={{ color: '#ffffff50', fontSize: 12, marginBottom: 14 }}>
+            {meta.label} · {safeGameIdx + 1} / {filteredGames.length}
+          </p>
+          <button onClick={doLaunch} style={{
+            background: `linear-gradient(135deg, ${meta.color}, ${meta.glow})`,
+            color: '#fff', border: 'none', borderRadius: 10,
+            padding: '10px 26px', fontSize: 14, fontWeight: 700,
+            cursor: 'pointer', boxShadow: `0 4px 16px ${meta.glow}50`,
+          }}>▶ Jogar</button>
+          <p style={{ color: '#ffffff20', fontSize: 10, marginTop: 8 }}>
+            {tvMode ? '◀▶ navegar · A jogar · Guide menu' : '◀▶ navegar · A jogar · Guide menu · B sair'}
+          </p>
         </div>
       )}
 
-      {/* Launch animation */}
-      {launching && launchGame && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center"
-             style={{ animation: 'rvBlack 0.7s forwards', background: 'rgba(0,0,0,0)' }}>
-          {launchGame.thumb && (
-            <img src={launchGame.thumb} alt="" style={{ width: 260, height: 340, objectFit: 'cover', borderRadius: 18, animation: 'rvCard 0.7s forwards', boxShadow: `0 0 80px ${meta.glow}` }} />
-          )}
+      {/* Launch */}
+      {launching && currentGame && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ animation: 'rvBlack 0.6s forwards', background: 'rgba(0,0,0,0)' }}>
+          {currentGame.thumb && <img src={currentGame.thumb} alt="" style={{ width: 240, height: 320, objectFit: 'cover', borderRadius: 16, animation: 'rvCard 0.6s forwards', boxShadow: `0 0 80px ${meta.glow}` }} />}
           <style>{`
-            @keyframes rvBlack { 0%{background:rgba(0,0,0,0)} 100%{background:rgba(0,0,0,0.98)} }
-            @keyframes rvCard  { 0%{transform:scale(1);opacity:1} 100%{transform:scale(1.2);opacity:0} }
+            @keyframes rvBlack { to{background:rgba(0,0,0,0.98)} }
+            @keyframes rvCard  { to{transform:scale(1.2);opacity:0} }
           `}</style>
         </div>
       )}
 
       {/* Confirmação saída */}
-      {confirmExit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center"
-             style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
-          <div style={{ background: '#0f0f18', border: `1px solid ${meta.glow}60`, borderRadius: 16, padding: '28px 40px', textAlign: 'center', boxShadow: `0 0 40px ${meta.glow}30` }}>
+      {confirmExit && !tvMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }}>
+          <div style={{ background: '#0f0f18', border: `1px solid ${meta.glow}50`, borderRadius: 16, padding: '28px 40px', textAlign: 'center' }}>
             <p style={{ color: '#fff', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Sair do RetroVision?</p>
-            <p style={{ color: '#ffffff60', fontSize: 13, marginBottom: 20 }}>A confirmar · B / X cancelar</p>
+            <p style={{ color: '#ffffff50', fontSize: 12, marginBottom: 20 }}>A confirmar · B / X cancelar</p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-              <button onClick={confirmExitNow} style={{ background: meta.color, color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Sair</button>
-              <button onClick={() => setConfirmExit(false)} style={{ background: 'rgba(255,255,255,0.08)', color: '#ffffff80', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '10px 24px', fontSize: 14, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={confirmExitNow} onMouseEnter={() => setConfirmSel(0)}
+                style={{ background: confirmSel === 0 ? meta.color : 'rgba(255,255,255,0.08)', color: confirmSel === 0 ? '#fff' : '#ffffff70', border: `2px solid ${confirmSel === 0 ? meta.glow : 'transparent'}`, borderRadius: 10, padding: '10px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}>Sair</button>
+              <button onClick={cancelExit} onMouseEnter={() => setConfirmSel(1)}
+                style={{ background: confirmSel === 1 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)', color: '#ffffff70', border: `2px solid ${confirmSel === 1 ? 'rgba(255,255,255,0.4)' : 'transparent'}`, borderRadius: 10, padding: '10px 24px', fontSize: 14, cursor: 'pointer', transition: 'all 0.15s' }}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -364,20 +422,24 @@ export default function RetroVisionPage({ onExit, onLaunch }) {
 
       {/* Menu Guide */}
       {menuOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center"
-             style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)' }}>
-          <div style={{ background: '#0f0f18', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, overflow: 'hidden', width: 260, boxShadow: '0 30px 80px rgba(0,0,0,0.9)' }}>
-            <div style={{ padding: '18px 22px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <p style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>RetroVision</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(10px)' }}>
+          <div style={{ background: '#0f0f18', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, overflow: 'hidden', width: 250 }}>
+            <div style={{ padding: '16px 20px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <p style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>RetroVision</p>
             </div>
             {menuItems.map((item, i) => (
-              <button key={i} onClick={item.action} onMouseEnter={() => setMenuIdx(i)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '13px 22px', border: 'none', cursor: 'pointer', background: i === menuIdx ? `${meta.color}35` : 'transparent', color: i === menuIdx ? '#fff' : '#ffffff70', fontSize: 14, textAlign: 'left', borderLeft: `3px solid ${i === menuIdx ? meta.glow : 'transparent'}`, transition: 'all 0.15s' }}>
+              <button key={i} onClick={item.action} onMouseEnter={() => setMenuIdx(i)} style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 14,
+                padding: '12px 20px', border: 'none', cursor: 'pointer',
+                background: i === menuIdx ? `${meta.color}35` : 'transparent',
+                color: i === menuIdx ? '#fff' : '#ffffff60', fontSize: 14, textAlign: 'left',
+                borderLeft: `3px solid ${i === menuIdx ? meta.glow : 'transparent'}`,
+              }}>
                 <span>{item.icon}</span><span>{item.label}</span>
               </button>
             ))}
-            <div style={{ padding: '10px 22px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <p style={{ color: '#ffffff30', fontSize: 11, textAlign: 'center' }}>A confirmar · B / Guide fechar</p>
+            <div style={{ padding: '8px 20px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <p style={{ color: '#ffffff25', fontSize: 10, textAlign: 'center' }}>A confirmar · B fechar</p>
             </div>
           </div>
         </div>
