@@ -105,18 +105,27 @@ function RomsTab() {
     load()
   }
 
-  const fetchThumb = async (id) => {
+  const [thumbSearch, setThumbSearch] = useState({}) // { [romId]: nomeAlternativo }
+
+  const fetchThumb = async (id, nomeOverride) => {
     try {
-      await api.fetchThumb(id)
-      load()
-      setMsg('Thumbnail atualizada!')
-    } catch (err) {
-      if (err.message?.includes('422') || err.message?.includes('API key')) {
-        setMsg('⚠️ Configure uma API key no .env para buscar capas. Veja: steamgriddb.com')
+      const token = localStorage.getItem('retrocloud_token')
+      const res = await fetch(`/api/scraper/rom/${id}/fetch-thumb`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(nomeOverride ? { nome: nomeOverride } : {}),
+      })
+      const d = await res.json()
+      if (res.ok) {
+        setMsg('Capa atualizada!')
+        setThumbSearch(s => ({ ...s, [id]: undefined }))
+        load()
       } else {
-        setMsg('Thumbnail não encontrada para este jogo.')
+        // Mostra campo para tentar nome alternativo
+        setThumbSearch(s => ({ ...s, [id]: { show: true, valor: d.nome_limpo || '', msg: d.message } }))
+        setMsg('')
       }
-    }
+    } catch { setMsg('Erro ao buscar capa.') }
   }
 
   const uploadThumb = async (id, file) => {
@@ -223,12 +232,12 @@ function RomsTab() {
       </Card>
 
       {/* Lista com abas por sistema e busca */}
-      <RomsList games={games} loading={loading} onFetchThumb={fetchThumb} onDelete={deleteRom} onUploadThumb={uploadThumb} />
+      <RomsList games={games} loading={loading} onFetchThumb={fetchThumb} onDelete={deleteRom} onUploadThumb={uploadThumb} thumbSearch={thumbSearch} />
     </div>
   )
 }
 
-function RomsList({ games, loading, onFetchThumb, onDelete, onUploadThumb }) {
+function RomsList({ games, loading, onFetchThumb, onDelete, onUploadThumb, thumbSearch = {} }) {
   const [search, setSearch]   = useState('')
   const [sistema, setSistema] = useState('todos')
 
@@ -293,15 +302,43 @@ function RomsList({ games, loading, onFetchThumb, onDelete, onUploadThumb }) {
                           ? <img src={g.thumb} alt="" className="w-7 h-9 object-cover rounded" />
                           : <span className="text-steam-muted text-xs">—</span>}
                       </td>
-                    <td className="py-2 flex gap-2 flex-wrap items-center">
-                      <button onClick={() => onFetchThumb(g.id)} className="text-xs text-steam-accent hover:underline">buscar capa</button>
-                      <label className="text-xs text-green-400 hover:underline cursor-pointer">
-                        enviar capa
-                        <input type="file" accept="image/*" className="hidden"
-                          onChange={e => onUploadThumb(g.id, e.target.files[0])} />
-                      </label>
-                      <button onClick={() => onDelete(g.id, g.nome)} className="text-xs text-red-400 hover:underline">deletar</button>
-                    </td>
+                      <td className="py-2">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex gap-2 flex-wrap items-center">
+                            <button onClick={() => onFetchThumb(g.id)}
+                              className="text-xs text-steam-accent hover:underline">buscar capa</button>
+                            <label className="text-xs text-green-400 hover:underline cursor-pointer">
+                              enviar capa
+                              <input type="file" accept="image/*" className="hidden"
+                                onChange={e => onUploadThumb(g.id, e.target.files[0])} />
+                            </label>
+                            <button onClick={() => onDelete(g.id, g.nome)}
+                              className="text-xs text-red-400 hover:underline">deletar</button>
+                          </div>
+                          {thumbSearch[g.id]?.show && (
+                            <div className="flex gap-1 items-center mt-1">
+                              <input
+                                id={`thumb-alt-${g.id}`}
+                                type="text"
+                                defaultValue={thumbSearch[g.id]?.valor || ''}
+                                placeholder="Tente outro nome..."
+                                onKeyDown={e => e.key === 'Enter' && onFetchThumb(g.id, e.target.value)}
+                                className="text-xs bg-steam-bg border border-steam-border rounded px-2 py-1
+                                           text-steam-text placeholder-steam-muted focus:border-steam-accent
+                                           focus:outline-none w-40"
+                              />
+                              <button
+                                onClick={() => onFetchThumb(g.id, document.getElementById(`thumb-alt-${g.id}`)?.value)}
+                                className="text-xs text-steam-accent border border-steam-border rounded px-2 py-1">
+                                →
+                              </button>
+                            </div>
+                          )}
+                          {thumbSearch[g.id]?.msg && (
+                            <p className="text-xs text-steam-muted">{thumbSearch[g.id].msg}</p>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

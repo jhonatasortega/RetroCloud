@@ -33,6 +33,12 @@ def create_app():
         db.create_all()
         _seed_defaults()
 
+    # Inicia scheduler de capas (roda diariamente em background)
+    from utils.thumb_scraper import ThumbScheduler
+    scheduler = ThumbScheduler(app)
+    scheduler.start()
+    app._thumb_scheduler = scheduler
+
     from routes.auth import auth_bp
     from routes.games import games_bp
     from routes.admin import admin_bp
