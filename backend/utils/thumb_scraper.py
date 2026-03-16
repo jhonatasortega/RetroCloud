@@ -310,7 +310,7 @@ class ThumbScheduler:
     def stop(self): self._stop.set()
 
     def _loop(self):
-        self._stop.wait(120)  # aguarda 2min após boot
+        self._stop.wait(600)  # aguarda 10min após boot — não trava o servidor no início
         while not self._stop.is_set():
             self._run_once()
             self._stop.wait(86400)  # 24h
@@ -326,14 +326,15 @@ class ThumbScheduler:
             if not roms:
                 log.info('ThumbScheduler: todas as ROMs têm capa.')
                 return
-            log.info(f'ThumbScheduler: {len(roms)} ROMs sem capa')
+            log.info(f'ThumbScheduler: {len(roms)} ROMs sem capa — processando...')
             ok = 0
             for rom in roms:
+                if self._stop.is_set():
+                    break
                 path = fetch_thumb(rom, upload_folder, cfg)
                 if path:
                     rom.thumb = path
+                    db.session.commit()  # commit por ROM — não perde progresso se reiniciar
                     ok += 1
-                time.sleep(1)
-            if ok:
-                db.session.commit()
+                time.sleep(3)  # 3s entre requests — não sobrecarrega o servidor nem o Archive.org
             log.info(f'ThumbScheduler: {ok}/{len(roms)} capas encontradas')

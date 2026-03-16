@@ -40,9 +40,14 @@ export default function PlayerPage() {
     window.addEventListener('gamepadconnected',    checkGp)
     window.addEventListener('gamepaddisconnected', checkGp)
     checkGp()
-    setShowTouch(navigator.maxTouchPoints > 0)
-    const obs = new MutationObserver(() =>
-      setShowTouch(document.body.dataset.inputMode === 'touch'))
+    // Touch só ativo quando: tem touch E não tem controle físico
+    const updateTouch = () => {
+      const hasTouch   = document.body.dataset.inputMode === 'touch'
+      const hasGamepad = [...(navigator.getGamepads?.() || [])].some(Boolean)
+      setShowTouch(hasTouch && !hasGamepad)
+    }
+    updateTouch()
+    const obs = new MutationObserver(updateTouch)
     obs.observe(document.body, { attributes: true, attributeFilter: ['data-input-mode'] })
     return () => {
       window.removeEventListener('gamepadconnected', checkGp)
@@ -201,8 +206,15 @@ export default function PlayerPage() {
 
       <div id="player-wrap" className="flex-1 relative bg-black">
         <div id="emulator-container" ref={useRef(null)}
-          style={{ width: '100%', height: showTouch ? 'calc(100vh - 208px)' : 'calc(100vh - 48px)', minHeight: 480, display: 'block', background: '#000' }} />
+          style={{ width: '100%', height: showTouch ? 'calc(100vh - 208px)' : fullscreen ? '100vh' : 'calc(100vh - 48px)', minHeight: 480, display: 'block', background: '#000' }} />
         {gamepadConnected && <ControlHint />}
+        {/* Botão flutuante em fullscreen */}
+        {fullscreen && (
+          <button onClick={() => setMenuOpen(true)}
+            style={{ position: 'fixed', top: 12, right: 12, zIndex: 40, background: 'rgba(0,0,0,0.6)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '8px 14px', fontSize: 18, cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+            ☰
+          </button>
+        )}
       </div>
 
       <TouchGamepad visible={showTouch} />
