@@ -35,9 +35,7 @@ def create_app():
 
     # Inicia scheduler de capas (roda diariamente em background)
     from utils.thumb_scraper import ThumbScheduler
-    scheduler = ThumbScheduler(app)
-    scheduler.start()
-    app._thumb_scheduler = scheduler
+    app._thumb_scheduler = ThumbScheduler(app)
 
     from routes.auth import auth_bp
     from routes.games import games_bp
@@ -81,4 +79,3 @@ def _seed_defaults():
 if __name__ == '__main__':
     app = create_app()
     app.run(host='0.0.0.0', port=5000, debug=os.getenv('FLASK_ENV') == 'development')
-
