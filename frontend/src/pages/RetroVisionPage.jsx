@@ -178,35 +178,43 @@ export default function RetroVisionPage({ onExit }) {
         const goL = repeatFire(14) || axFire('L')
         const goR = repeatFire(15) || axFire('R')
 
-        if (goL || goR) {
+        if (goL) {
           setGameIdx(cur => {
-            const dir   = goR ? 1 : -1
-            const next  = Math.max(0, Math.min(cur + dir, filteredGames.length - 1))
-            // Verifica se deve pular para próxima letra (segurado > 1.5s)
-            const heldMs = Date.now() - (heldTime.current._navStart || Date.now())
-            if (heldMs > 1500) {
+            // Segurado > 1.5s: pula para primeira letra anterior
+            const held = now - (heldTime.current._navStart || now)
+            if (held > 1500 && cur > 0) {
               const curLetter = filteredGames[cur]?.nome?.[0]?.toUpperCase() || ''
-              if (goR) {
-                const jumpIdx = filteredGames.findIndex((g, i) =>
-                  i > cur && g.nome?.[0]?.toUpperCase() > curLetter
-                )
-                return jumpIdx >= 0 ? jumpIdx : filteredGames.length - 1
-              } else {
-                const prevLetter = filteredGames[cur]?.nome?.[0]?.toUpperCase() || ''
-                for (let i = cur - 1; i >= 0; i--) {
-                  if (filteredGames[i]?.nome?.[0]?.toUpperCase() < prevLetter) {
-                    // Volta para o primeiro da letra anterior
-                    const letter = filteredGames[i]?.nome?.[0]?.toUpperCase()
-                    const firstOfLetter = filteredGames.findIndex(g => g.nome?.[0]?.toUpperCase() === letter)
-                    return firstOfLetter >= 0 ? firstOfLetter : i
-                  }
+              // Acha primeira ocorrência da letra anterior
+              for (let i = cur - 1; i >= 0; i--) {
+                const l = filteredGames[i]?.nome?.[0]?.toUpperCase()
+                if (l < curLetter) {
+                  const first = filteredGames.findIndex(g => g.nome?.[0]?.toUpperCase() === l)
+                  heldTime.current._navStart = now
+                  return first >= 0 ? first : i
                 }
-                return 0
               }
+              heldTime.current._navStart = now
+              return 0
             }
-            return next
+            return Math.max(0, cur - 1)
           })
-          if (!heldTime.current._navStart) heldTime.current._navStart = Date.now()
+        }
+        if (goR) {
+          setGameIdx(cur => {
+            const held = now - (heldTime.current._navStart || now)
+            if (held > 1500 && cur < filteredGames.length - 1) {
+              const curLetter = filteredGames[cur]?.nome?.[0]?.toUpperCase() || ''
+              const jumpIdx = filteredGames.findIndex((g, i) =>
+                i > cur && (g.nome?.[0]?.toUpperCase() || '') > curLetter
+              )
+              heldTime.current._navStart = now
+              return jumpIdx >= 0 ? jumpIdx : filteredGames.length - 1
+            }
+            return Math.min(cur + 1, filteredGames.length - 1)
+          })
+        }
+        if (goL || goR) {
+          if (!heldTime.current._navStart) heldTime.current._navStart = now
         } else {
           heldTime.current._navStart = 0
         }
@@ -364,12 +372,12 @@ export default function RetroVisionPage({ onExit }) {
                       : '0 8px 30px rgba(0,0,0,0.7)',
                     border: isCenter ? `2px solid ${meta.glow}50` : '1px solid #ffffff08',
                   }}>
-                    {game.thumb ? (
+                    {game.thumb && Math.abs(offset) <= 2 ? (
                       <img
-                        src={Math.abs(offset) <= 2 ? game.thumb : undefined}
-                        data-src={game.thumb}
+                        src={game.thumb}
                         alt={game.nome}
                         loading="lazy"
+                        decoding="async"
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <div style={{
