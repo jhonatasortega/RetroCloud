@@ -106,8 +106,17 @@ function RomsTab() {
   }
 
   const fetchThumb = async (id) => {
-    try { await api.fetchThumb(id); load(); setMsg('Thumbnail atualizada!') }
-    catch { setMsg('Thumbnail não encontrada.') }
+    try {
+      await api.fetchThumb(id)
+      load()
+      setMsg('Thumbnail atualizada!')
+    } catch (err) {
+      if (err.message?.includes('422') || err.message?.includes('API key')) {
+        setMsg('⚠️ Configure uma API key no .env para buscar capas. Veja: steamgriddb.com')
+      } else {
+        setMsg('Thumbnail não encontrada para este jogo.')
+      }
+    }
   }
 
   const fetchAll = async () => {

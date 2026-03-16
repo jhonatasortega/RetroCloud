@@ -3,217 +3,177 @@ from models import db, Rom
 from utils.jwt_helper import admin_required
 import os
 import requests as http_req
+import re
 
 scraper_bp = Blueprint('scraper', __name__)
 
-SYSTEM_MAP_THEGAMESDB = {
-    'ps1': 6, 'psx': 6,
-    'snes': 6004, 'n64': 3,
-    'gba': 5, 'gbc': 41, 'gb': 4,
-    'megadrive': 36, 'genesis': 36, 'md': 36,
-    'nes': 7,
-}
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
-SYSTEM_MAP_SCREENSCRAPER = {
-    'ps1': 57, 'psx': 57,
-    'snes': 3, 'n64': 14,
-    'gba': 12, 'gbc': 10, 'gb': 9,
-    'megadrive': 1, 'genesis': 1, 'md': 1,
-    'nes': 3,
-}
-
-# Nomes de sistema legíveis para busca de imagem
-SYSTEM_NAMES = {
-    'ps1': 'PlayStation', 'psx': 'PlayStation',
-    'snes': 'Super Nintendo', 'n64': 'Nintendo 64',
-    'gba': 'Game Boy Advance', 'gbc': 'Game Boy Color', 'gb': 'Game Boy',
-    'megadrive': 'Sega Genesis', 'genesis': 'Sega Genesis', 'md': 'Sega Genesis',
-    'nes': 'NES',
-}
+def _clean_name(nome):
+    """Remove extensão, underscores e prefixos de código de ROM."""
+    nome = os.path.splitext(nome)[0]
+    nome = re.sub(r'[\(\[\{][^\)\]\}]*[\)\]\}]', '', nome)  # remove (USA), [!], etc
+    nome = nome.replace('_', ' ').replace('-', ' ')
+    return ' '.join(nome.split()).strip()
 
 
-def _normalize(s):
-    return s.lower().strip().replace(' ', '').replace('-', '')
-
-
-def search_thegamesdb(nome, sistema, api_key):
-    """Busca via TheGamesDB com API key."""
-    sys_id = SYSTEM_MAP_THEGAMESDB.get(_normalize(sistema))
-    params = {
-        'apikey': api_key,
-        'name': nome,
-        'fields': 'id,game_title',
-        'include': 'boxart',
-        'page': 1,
-    }
-    if sys_id:
-        params['filter[platform]'] = sys_id
+def _download(url, path):
+    """Baixa arquivo para o disco. Retorna True se OK."""
     try:
-        r = http_req.get('https://api.thegamesdb.net/v1/Games/ByGameName', params=params, timeout=10)
+        r = http_req.get(url, timeout=15, stream=True,
+                         headers={'User-Agent': 'RetroCloud/1.0'})
+        r.raise_for_status()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            for chunk in r.iter_content(8192):
+                f.write(chunk)
+        return True
+    except Exception as e:
+        current_app.logger.warning(f'Download falhou {url}: {e}')
+        return False
+
+
+# ── Fontes de thumbnail ───────────────────────────────────────────────────────
+
+def _try_steamgriddb(nome, sistema, api_key, save_path):
+    """Busca no SteamGridDB (requer API key gratuita)."""
+    if not api_key:
+        return False
+    try:
+        headers = {'Authorization': f'Bearer {api_key}'}
+        r = http_req.get('https://www.steamgriddb.com/api/v2/search/autocomplete',
+                         params={'term': nome}, headers=headers, timeout=10)
+        r.raise_for_status()
+        games = r.json().get('data', [])
+        if not games:
+            return False
+        game_id = games[0]['id']
+        r2 = http_req.get(f'https://www.steamgriddb.com/api/v2/grids/game/{game_id}',
+                          params={'dimensions': '600x900'}, headers=headers, timeout=10)
+        r2.raise_for_status()
+        imgs = r2.json().get('data', [])
+        if not imgs:
+            return False
+        return _download(imgs[0]['url'], save_path)
+    except Exception as e:
+        current_app.logger.warning(f'SteamGridDB falhou "{nome}": {e}')
+        return False
+
+
+def _try_thegamesdb(nome, sistema, api_key, save_path):
+    """Busca no TheGamesDB."""
+    if not api_key:
+        return False
+    SYSTEM_IDS = {'ps1': 6, 'psx': 6, 'snes': 6004, 'n64': 3,
+                  'gba': 5, 'gbc': 41, 'gb': 4, 'megadrive': 36, 'nes': 7}
+    try:
+        params = {'apikey': api_key, 'name': nome, 'include': 'boxart'}
+        sys_id = SYSTEM_IDS.get(sistema.lower())
+        if sys_id:
+            params['filter[platform]'] = sys_id
+        r = http_req.get('https://api.thegamesdb.net/v1/Games/ByGameName',
+                         params=params, timeout=10)
         r.raise_for_status()
         data = r.json()
         games = data.get('data', {}).get('games', [])
         if not games:
-            return None
-        game_id = games[0]['id']
+            return False
+        gid = games[0]['id']
         boxart = data.get('include', {}).get('boxart', {})
-        base_url = boxart.get('base_url', {}).get('medium', '')
-        images = boxart.get('data', {}).get(str(game_id), [])
+        base = boxart.get('base_url', {}).get('medium', '')
+        images = boxart.get('data', {}).get(str(gid), [])
         for img in images:
             if img.get('side') == 'front':
-                return base_url + img['filename']
+                return _download(base + img['filename'], save_path)
         if images:
-            return base_url + images[0]['filename']
+            return _download(base + images[0]['filename'], save_path)
+        return False
     except Exception as e:
-        current_app.logger.warning(f'TheGamesDB falhou para "{nome}": {e}')
-    return None
+        current_app.logger.warning(f'TheGamesDB falhou "{nome}": {e}')
+        return False
 
 
-def search_screenscraper(nome, sistema, user, password):
-    """Busca via ScreenScraper."""
-    sys_id = SYSTEM_MAP_SCREENSCRAPER.get(_normalize(sistema))
+def _try_screenscraper(nome, sistema, user, password, save_path):
+    """Busca no ScreenScraper."""
+    if not user or not password:
+        return False
+    SYSTEM_IDS = {'ps1': 57, 'psx': 57, 'snes': 3, 'n64': 14,
+                  'gba': 12, 'gbc': 10, 'gb': 9, 'megadrive': 1, 'nes': 3}
+    sys_id = SYSTEM_IDS.get(sistema.lower())
     if not sys_id:
-        return None
-    params = {
-        'devid': 'retrocloud', 'devpassword': 'retrocloud',
-        'softname': 'retrocloud', 'output': 'json',
-        'ssid': user, 'sspassword': password,
-        'systemeid': sys_id, 'romnom': nome, 'media': 'box-2D',
-    }
+        return False
     try:
-        r = http_req.get('https://www.screenscraper.fr/api2/jeuInfos.php', params=params, timeout=15)
+        params = {'devid': 'retrocloud', 'devpassword': 'retrocloud',
+                  'softname': 'retrocloud', 'output': 'json',
+                  'ssid': user, 'sspassword': password,
+                  'systemeid': sys_id, 'romnom': nome, 'media': 'box-2D'}
+        r = http_req.get('https://www.screenscraper.fr/api2/jeuInfos.php',
+                         params=params, timeout=15)
         r.raise_for_status()
         data = r.json()
         medias = data.get('response', {}).get('jeu', {}).get('medias', [])
         for m in medias:
             if m.get('type') == 'box-2D':
-                return m.get('url')
+                return _download(m['url'], save_path)
+        return False
     except Exception as e:
-        current_app.logger.warning(f'ScreenScraper falhou para "{nome}": {e}')
-    return None
+        current_app.logger.warning(f'ScreenScraper falhou "{nome}": {e}')
+        return False
 
 
-def search_igdb(nome, sistema, client_id, client_secret):
-    """Busca via IGDB (Twitch API)."""
-    try:
-        # Obtém token
-        token_r = http_req.post('https://id.twitch.tv/oauth2/token', params={
-            'client_id': client_id,
-            'client_secret': client_secret,
-            'grant_type': 'client_credentials',
-        }, timeout=10)
-        token = token_r.json().get('access_token')
-        if not token:
-            return None
-
-        sys_name = SYSTEM_NAMES.get(_normalize(sistema), '')
-        query = f'search "{nome}"; fields name,cover.url; limit 5;'
-        r = http_req.post('https://api.igdb.com/v4/games',
-            headers={'Client-ID': client_id, 'Authorization': f'Bearer {token}'},
-            data=query, timeout=10)
-        games = r.json()
-        for g in games:
-            cover = g.get('cover', {})
-            url = cover.get('url', '')
-            if url:
-                # Troca thumbnail por imagem grande
-                return 'https:' + url.replace('t_thumb', 't_cover_big')
-    except Exception as e:
-        current_app.logger.warning(f'IGDB falhou para "{nome}": {e}')
-    return None
-
-
-def search_steamgriddb(nome, api_key):
-    """Busca capa via SteamGridDB (gratuito com key)."""
-    try:
-        headers = {'Authorization': f'Bearer {api_key}'}
-        # Busca o jogo
-        r = http_req.get(f'https://www.steamgriddb.com/api/v2/search/autocomplete/{nome}',
-                         headers=headers, timeout=10)
-        games = r.json().get('data', [])
-        if not games:
-            return None
-        game_id = games[0]['id']
-        # Busca as grids (capas verticais)
-        r2 = http_req.get(f'https://www.steamgriddb.com/api/v2/grids/game/{game_id}',
-                          headers=headers, params={'dimensions': '600x900'}, timeout=10)
-        grids = r2.json().get('data', [])
-        if grids:
-            return grids[0]['url']
-    except Exception as e:
-        current_app.logger.warning(f'SteamGridDB falhou para "{nome}": {e}')
-    return None
-
-
-def download_thumb(url, rom_id, upload_folder):
-    """Faz download da imagem e salva localmente."""
-    try:
-        r = http_req.get(url, timeout=15, stream=True)
-        r.raise_for_status()
-        ext = url.split('.')[-1].split('?')[0].lower()
-        if ext not in ('jpg', 'jpeg', 'png', 'webp', 'gif'):
-            ext = 'jpg'
-        thumb_dir = os.path.join(upload_folder, 'thumbs')
-        os.makedirs(thumb_dir, exist_ok=True)
-        filename = f'rom_{rom_id}.{ext}'
-        full_path = os.path.join(thumb_dir, filename)
-        with open(full_path, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-        return f'/static/uploads/thumbs/{filename}'
-    except Exception as e:
-        current_app.logger.warning(f'Download de thumb falhou ({url}): {e}')
-    return None
-
-
-def auto_fetch_thumb(rom):
-    """
-    Tenta buscar thumbnail em todos os provedores disponíveis.
-    Retorna o caminho local ou None.
-    """
+def fetch_thumb_for_rom(rom):
+    """Tenta todas as fontes disponíveis. Retorna caminho local ou None."""
     cfg = current_app.config
     upload_folder = cfg['UPLOAD_FOLDER']
-    nome    = rom.nome
-    sistema = rom.sistema
 
-    thumb_url = None
+    ext = 'jpg'
+    save_path = os.path.join(upload_folder, 'thumbs', f'rom_{rom.id}.{ext}')
+    thumb_url_path = f'/static/uploads/thumbs/rom_{rom.id}.{ext}'
 
-    # 1. TheGamesDB (se tiver key)
-    if cfg.get('THEGAMESDB_API_KEY'):
-        thumb_url = search_thegamesdb(nome, sistema, cfg['THEGAMESDB_API_KEY'])
+    nome = _clean_name(rom.nome)
+    sistema = rom.sistema or ''
 
-    # 2. IGDB (se tiver key)
-    if not thumb_url and cfg.get('IGDB_CLIENT_ID') and cfg.get('IGDB_CLIENT_SECRET'):
-        thumb_url = search_igdb(nome, sistema, cfg['IGDB_CLIENT_ID'], cfg['IGDB_CLIENT_SECRET'])
+    # Tenta cada fonte em ordem
+    sources = [
+        lambda: _try_steamgriddb(nome, sistema, cfg.get('STEAMGRIDDB_API_KEY', ''), save_path),
+        lambda: _try_thegamesdb(nome, sistema, cfg.get('THEGAMESDB_API_KEY', ''), save_path),
+        lambda: _try_screenscraper(nome, sistema, cfg.get('SCREENSCRAPER_USER', ''), cfg.get('SCREENSCRAPER_PASS', ''), save_path),
+    ]
 
-    # 3. SteamGridDB (se tiver key)
-    if not thumb_url and cfg.get('STEAMGRIDDB_API_KEY'):
-        thumb_url = search_steamgriddb(nome, cfg['STEAMGRIDDB_API_KEY'])
+    for source in sources:
+        if source():
+            return thumb_url_path
 
-    # 4. ScreenScraper (se tiver credenciais)
-    if not thumb_url and cfg.get('SCREENSCRAPER_USER') and cfg.get('SCREENSCRAPER_PASS'):
-        thumb_url = search_screenscraper(nome, sistema, cfg['SCREENSCRAPER_USER'], cfg['SCREENSCRAPER_PASS'])
+    return None
 
-    if not thumb_url:
-        return None
 
-    return download_thumb(thumb_url, rom.id, upload_folder)
-
+# ── Rotas ─────────────────────────────────────────────────────────────────────
 
 @scraper_bp.route('/rom/<int:rom_id>/fetch-thumb', methods=['POST'])
 @admin_required
 def fetch_thumb(current_user, rom_id):
-    """Busca e salva automaticamente a thumbnail de uma ROM."""
+    """Busca thumbnail para uma ROM específica."""
     rom = Rom.query.get(rom_id)
     if not rom:
         return jsonify({'message': 'ROM não encontrada'}), 404
 
-    local_path = auto_fetch_thumb(rom)
-    if not local_path:
+    cfg = current_app.config
+    has_any_key = any([
+        cfg.get('STEAMGRIDDB_API_KEY'),
+        cfg.get('THEGAMESDB_API_KEY'),
+        cfg.get('SCREENSCRAPER_USER'),
+    ])
+
+    if not has_any_key:
         return jsonify({
-            'message': 'Thumbnail não encontrada. Configure ao menos uma API key no .env (THEGAMESDB_API_KEY, IGDB_CLIENT_ID ou STEAMGRIDDB_API_KEY).',
-            'hint': 'SteamGridDB é gratuito: https://www.steamgriddb.com/profile/preferences/api'
-        }), 404
+            'message': 'Nenhuma API key configurada.',
+            'hint': 'Adicione STEAMGRIDDB_API_KEY no .env (gratuito em steamgriddb.com)',
+            'configured': False
+        }), 422
+
+    local_path = fetch_thumb_for_rom(rom)
+    if not local_path:
+        return jsonify({'message': f'Thumbnail não encontrada para "{rom.nome}"'}), 404
 
     rom.thumb = local_path
     db.session.commit()
@@ -224,18 +184,51 @@ def fetch_thumb(current_user, rom_id):
 @admin_required
 def fetch_all_thumbs(current_user):
     """Busca thumbnails para todas as ROMs sem capa."""
+    cfg = current_app.config
+    has_any_key = any([
+        cfg.get('STEAMGRIDDB_API_KEY'),
+        cfg.get('THEGAMESDB_API_KEY'),
+        cfg.get('SCREENSCRAPER_USER'),
+    ])
+
+    if not has_any_key:
+        return jsonify({
+            'message': 'Nenhuma API key configurada.',
+            'hint': 'Adicione STEAMGRIDDB_API_KEY no .env (gratuito em steamgriddb.com)',
+            'configured': False
+        }), 422
+
     roms = Rom.query.filter((Rom.thumb == None) | (Rom.thumb == '')).all()
-    resultados = {'atualizadas': 0, 'falhas': 0, 'detalhes': []}
+    ok, fail = 0, []
 
     for rom in roms:
-        local_path = auto_fetch_thumb(rom)
-        if local_path:
-            rom.thumb = local_path
-            resultados['atualizadas'] += 1
-            resultados['detalhes'].append({'rom': rom.nome, 'status': 'ok'})
+        path = fetch_thumb_for_rom(rom)
+        if path:
+            rom.thumb = path
+            ok += 1
         else:
-            resultados['falhas'] += 1
-            resultados['detalhes'].append({'rom': rom.nome, 'status': 'nao_encontrada'})
+            fail.append(rom.nome)
 
     db.session.commit()
-    return jsonify(resultados), 200
+    return jsonify({
+        'atualizadas': ok,
+        'falhas': len(fail),
+        'detalhes': fail[:20]  # máximo 20 nomes na resposta
+    }), 200
+
+
+@scraper_bp.route('/status', methods=['GET'])
+@admin_required
+def scraper_status(current_user):
+    """Retorna quais fontes estão configuradas."""
+    cfg = current_app.config
+    return jsonify({
+        'steamgriddb': bool(cfg.get('STEAMGRIDDB_API_KEY')),
+        'thegamesdb':  bool(cfg.get('THEGAMESDB_API_KEY')),
+        'screenscraper': bool(cfg.get('SCREENSCRAPER_USER')),
+        'any_configured': any([
+            cfg.get('STEAMGRIDDB_API_KEY'),
+            cfg.get('THEGAMESDB_API_KEY'),
+            cfg.get('SCREENSCRAPER_USER'),
+        ])
+    }), 200
