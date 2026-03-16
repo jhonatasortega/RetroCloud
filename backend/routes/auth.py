@@ -6,7 +6,35 @@ from datetime import datetime, timedelta
 
 auth_bp = Blueprint('auth', __name__)
 
-@auth_bp.route('/register', methods=['POST'])
+@auth_bp.route('/change-password', methods=['POST'])
+def change_password():
+    """Altera a senha do usuário autenticado."""
+    token = None
+    if 'Authorization' in request.headers:
+        try: token = request.headers['Authorization'].split(' ')[1]
+        except IndexError: return jsonify({'message': 'Token inválido'}), 401
+    if not token:
+        return jsonify({'message': 'Token não fornecido'}), 401
+
+    from utils.jwt_helper import decode_token
+    payload = decode_token(token)
+    if not payload:
+        return jsonify({'message': 'Token inválido'}), 401
+
+    user = User.query.get(payload['user_id'])
+    if not user:
+        return jsonify({'message': 'Usuário não encontrado'}), 404
+
+    data = request.get_json()
+    if not data or not data.get('senha_atual') or not data.get('senha_nova'):
+        return jsonify({'message': 'Dados incompletos'}), 400
+
+    if not bcrypt.checkpw(data['senha_atual'].encode('utf-8'), user.senha_hash.encode('utf-8')):
+        return jsonify({'message': 'Senha atual incorreta'}), 401
+
+    user.senha_hash = bcrypt.hashpw(data['senha_nova'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    db.session.commit()
+    return jsonify({'message': 'Senha alterada com sucesso'}), 200
 def register():
     """Registra um novo usuário."""
     data = request.get_json()

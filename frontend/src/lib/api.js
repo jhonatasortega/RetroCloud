@@ -39,11 +39,16 @@ export const api = {
 
   // Admin
   adminUsers:      ()        => req('GET',  '/admin/users'),
+  adminCreateUser: (data)    => req('POST', '/admin/users', data),
   adminSessions:   ()        => req('GET',  '/admin/sessions'),
   adminConfig:     ()        => req('GET',  '/admin/config'),
   updateConfig:    (data)    => req('PUT',  '/admin/config', data),
   deleteRom:       (id)      => req('DELETE', `/admin/roms/${id}`),
   terminateSession:(id)      => req('POST', `/admin/sessions/${id}/terminate`),
+  shutdown:        ()        => req('POST', '/admin/shutdown'),
+
+  // Usuário
+  changePassword:  (senha_atual, senha_nova) => req('POST', '/auth/change-password', { senha_atual, senha_nova }),
 
   // Scraper
   fetchThumb:      (id)      => req('POST', `/scraper/rom/${id}/fetch-thumb`),

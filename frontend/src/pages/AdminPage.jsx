@@ -13,7 +13,6 @@ export default function AdminPage() {
         <p className="text-steam-muted text-sm mt-0.5">Gerencie ROMs, usuários e configurações do sistema</p>
       </div>
 
-      {/* Tabs */}
       <div className="flex border-b border-steam-border bg-steam-card px-6 overflow-x-auto">
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)}
@@ -36,14 +35,20 @@ export default function AdminPage() {
 
 /* ── ROMs ── */
 function RomsTab() {
-  const [games, setGames]   = useState([])
-  const [loading, setLoading] = useState(true)
+  const [games, setGames]         = useState([])
+  const [loading, setLoading]     = useState(true)
   const [uploading, setUploading] = useState(false)
-  const [msg, setMsg]       = useState('')
+  const [importing, setImporting] = useState(false)
   const [fetchingAll, setFetchingAll] = useState(false)
-  const [form, setForm]     = useState({ nome: '', sistema: '', descricao: '', tags: '' })
+  const [msg, setMsg]             = useState('')
+  const [form, setForm]           = useState({ nome: '', sistema: '', descricao: '', tags: '' })
 
-  const load = () => api.games().then(d => setGames(d.games || [])).finally(() => setLoading(false))
+  const SISTEMAS = ['ps1','snes','n64','gba','gbc','gb','megadrive','nes']
+
+  const load = () => {
+    setLoading(true)
+    api.games().then(d => setGames(d.games || [])).finally(() => setLoading(false))
+  }
   useEffect(() => { load() }, [])
 
   const upload = async (e) => {
@@ -53,19 +58,45 @@ function RomsTab() {
     if (!romFile) return setMsg('Selecione um arquivo ROM.')
     setUploading(true)
     const fd = new FormData()
-    fd.append('rom',      romFile)
-    fd.append('nome',     form.nome || romFile.name.replace(/\.[^.]+$/, ''))
-    fd.append('sistema',  form.sistema)
-    fd.append('descricao',form.descricao)
-    fd.append('tags',     form.tags)
+    fd.append('rom',       romFile)
+    fd.append('nome',      form.nome || romFile.name.replace(/\.[^.]+$/, ''))
+    fd.append('sistema',   form.sistema)
+    fd.append('descricao', form.descricao)
+    fd.append('tags',      form.tags)
     if (thumbFile) fd.append('thumb', thumbFile)
     try {
       const d = await api.uploadRom(fd)
       setMsg(d.message || 'ROM enviada!')
       setForm({ nome: '', sistema: '', descricao: '', tags: '' })
+      document.getElementById('rom-file').value = ''
+      document.getElementById('thumb-file').value = ''
       load()
     } catch (err) { setMsg('Erro: ' + err.message) }
     finally { setUploading(false) }
+  }
+
+  // Importação em lote por pasta
+  const importFolder = async (e) => {
+    const files = Array.from(e.target.files)
+    if (!files.length) return
+    const sistema = document.getElementById('import-sistema').value
+    if (!sistema) return setMsg('Selecione o sistema antes de importar a pasta.')
+    setImporting(true)
+    setMsg(`Importando ${files.length} arquivo(s)...`)
+    let ok = 0, fail = 0
+    for (const file of files) {
+      const fd = new FormData()
+      fd.append('rom',     file)
+      fd.append('nome',    file.name.replace(/\.[^.]+$/, ''))
+      fd.append('sistema', sistema)
+      try {
+        await api.uploadRom(fd)
+        ok++
+      } catch { fail++ }
+    }
+    setMsg(`Importação concluída: ${ok} enviadas, ${fail} falhas.`)
+    setImporting(false)
+    load()
   }
 
   const deleteRom = async (id, nome) => {
@@ -75,11 +106,8 @@ function RomsTab() {
   }
 
   const fetchThumb = async (id) => {
-    try {
-      await api.fetchThumb(id)
-      load()
-      setMsg('Thumbnail atualizada!')
-    } catch { setMsg('Thumbnail não encontrada.') }
+    try { await api.fetchThumb(id); load(); setMsg('Thumbnail atualizada!') }
+    catch { setMsg('Thumbnail não encontrada.') }
   }
 
   const fetchAll = async () => {
@@ -94,35 +122,34 @@ function RomsTab() {
 
   return (
     <div className="space-y-6">
-      {/* Upload form */}
+      {/* Upload individual */}
       <Card title="Adicionar ROM">
         <form onSubmit={upload} className="grid sm:grid-cols-2 gap-4">
           <Field label="Nome do jogo">
             <input value={form.nome} onChange={e => setForm(f=>({...f,nome:e.target.value}))}
-              placeholder="Ex: Final Fantasy VII" className={input} />
+              placeholder="Ex: Final Fantasy VII" className={inp} />
           </Field>
           <Field label="Sistema *">
-            <select value={form.sistema} required onChange={e => setForm(f=>({...f,sistema:e.target.value}))} className={input}>
+            <select value={form.sistema} required onChange={e => setForm(f=>({...f,sistema:e.target.value}))} className={inp}>
               <option value="">Selecione...</option>
-              {['ps1','snes','n64','gba','gbc','gb','megadrive','nes'].map(s => (
-                <option key={s} value={s}>{s.toUpperCase()}</option>
-              ))}
+              {SISTEMAS.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
             </select>
           </Field>
           <Field label="Arquivo ROM *">
-            <input id="rom-file" type="file" accept=".bin,.iso,.cue,.sfc,.smc,.nes,.gba,.gbc,.gb,.n64,.z64,.md,.gen"
-              className={input} required />
+            <input id="rom-file" type="file"
+              accept=".bin,.iso,.cue,.sfc,.smc,.nes,.gba,.gbc,.gb,.n64,.z64,.md,.gen"
+              className={inp} required />
           </Field>
           <Field label="Thumbnail (opcional)">
-            <input id="thumb-file" type="file" accept="image/*" className={input} />
+            <input id="thumb-file" type="file" accept="image/*" className={inp} />
           </Field>
           <Field label="Descrição" className="sm:col-span-2">
             <input value={form.descricao} onChange={e => setForm(f=>({...f,descricao:e.target.value}))}
-              placeholder="Descrição do jogo..." className={input} />
+              placeholder="Descrição do jogo..." className={inp} />
           </Field>
           <Field label="Tags" className="sm:col-span-2">
             <input value={form.tags} onChange={e => setForm(f=>({...f,tags:e.target.value}))}
-              placeholder="rpg, ação, aventura..." className={input} />
+              placeholder="rpg, ação, aventura..." className={inp} />
           </Field>
           <div className="sm:col-span-2 flex gap-3 items-center flex-wrap">
             <Btn type="submit" disabled={uploading}>{uploading ? 'Enviando...' : 'Adicionar ROM'}</Btn>
@@ -134,8 +161,40 @@ function RomsTab() {
         </form>
       </Card>
 
-      {/* Lista de ROMs */}
-      <Card title={`ROMs (${games.length})`}>
+      {/* Importação em lote */}
+      <Card title="Importar pasta de ROMs">
+        <div className="space-y-3">
+          <p className="text-steam-muted text-sm">
+            Selecione o sistema e uma pasta inteira de ROMs para importar de uma vez.
+          </p>
+          <div className="flex gap-3 flex-wrap items-end">
+            <Field label="Sistema *">
+              <select id="import-sistema" className={inp} defaultValue="">
+                <option value="">Selecione...</option>
+                {SISTEMAS.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
+              </select>
+            </Field>
+            <Field label="Pasta de ROMs">
+              <input
+                type="file"
+                multiple
+                accept=".bin,.iso,.cue,.sfc,.smc,.nes,.gba,.gbc,.gb,.n64,.z64,.md,.gen"
+                onChange={importFolder}
+                disabled={importing}
+                className={inp}
+              />
+            </Field>
+          </div>
+          {importing && (
+            <div className="flex items-center gap-2 text-steam-accent text-sm">
+              <span className="animate-spin">⏳</span> {msg}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Lista */}
+      <Card title={`ROMs cadastradas (${games.length})`}>
         {loading ? <p className="text-steam-muted text-sm">Carregando...</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -162,10 +221,8 @@ function RomsTab() {
                         : <span className="text-steam-muted text-xs">sem capa</span>}
                     </td>
                     <td className="py-2.5 flex gap-2 flex-wrap">
-                      <button onClick={() => fetchThumb(g.id)}
-                        className="text-xs text-steam-accent hover:underline">capa</button>
-                      <button onClick={() => deleteRom(g.id, g.nome)}
-                        className="text-xs text-red-400 hover:underline">deletar</button>
+                      <button onClick={() => fetchThumb(g.id)} className="text-xs text-steam-accent hover:underline">buscar capa</button>
+                      <button onClick={() => deleteRom(g.id, g.nome)} className="text-xs text-red-400 hover:underline">deletar</button>
                     </td>
                   </tr>
                 ))}
@@ -180,37 +237,88 @@ function RomsTab() {
 
 /* ── Usuários ── */
 function UsersTab() {
-  const [users, setUsers] = useState([])
-  useEffect(() => { api.adminUsers().then(d => setUsers(d.users || [])) }, [])
+  const [users, setUsers]     = useState([])
+  const [msg, setMsg]         = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm]       = useState({ nome: '', email: '', senha: '' })
+  const { api: apiInstance }  = { api }
+
+  const load = () => api.adminUsers().then(d => setUsers(d.users || []))
+  useEffect(() => { load() }, [])
+
+  const criar = async (e) => {
+    e.preventDefault()
+    try {
+      await api.adminCreateUser(form)
+      setMsg('Usuário criado!')
+      setForm({ nome: '', email: '', senha: '' })
+      setShowForm(false)
+      load()
+    } catch (err) { setMsg('Erro: ' + err.message) }
+  }
+
   return (
-    <Card title={`Usuários (${users.length} / 5)`}>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-steam-border text-steam-muted text-xs uppercase">
-              <th className="text-left py-2 pr-4">Nome</th>
-              <th className="text-left py-2 pr-4">Email</th>
-              <th className="text-left py-2 pr-4">Admin</th>
-              <th className="text-left py-2">Criado em</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id} className="border-b border-steam-border/50 hover:bg-steam-panel/50">
-                <td className="py-2.5 pr-4 text-steam-text">{u.nome}</td>
-                <td className="py-2.5 pr-4 text-steam-muted">{u.email}</td>
-                <td className="py-2.5 pr-4">
-                  {u.is_admin && <span className="text-xs bg-steam-accent text-steam-bg px-2 py-0.5 rounded font-bold">ADM</span>}
-                </td>
-                <td className="py-2.5 text-steam-muted text-xs">
-                  {new Date(u.criado_em).toLocaleDateString('pt-BR')}
-                </td>
+    <div className="space-y-4">
+      <Card title={`Usuários (${users.length} / 5)`}>
+        <div className="overflow-x-auto mb-4">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-steam-border text-steam-muted text-xs uppercase">
+                <th className="text-left py-2 pr-4">Nome</th>
+                <th className="text-left py-2 pr-4">Email</th>
+                <th className="text-left py-2 pr-4">Admin</th>
+                <th className="text-left py-2">Criado em</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id} className="border-b border-steam-border/50 hover:bg-steam-panel/50">
+                  <td className="py-2.5 pr-4 text-steam-text">{u.nome}</td>
+                  <td className="py-2.5 pr-4 text-steam-muted">{u.email}</td>
+                  <td className="py-2.5 pr-4">
+                    {u.is_admin && <span className="text-xs bg-steam-accent text-steam-bg px-2 py-0.5 rounded font-bold">ADM</span>}
+                  </td>
+                  <td className="py-2.5 text-steam-muted text-xs">
+                    {new Date(u.criado_em).toLocaleDateString('pt-BR')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {users.length < 5 && (
+          <Btn onClick={() => setShowForm(s => !s)} variant="secondary">
+            {showForm ? 'Cancelar' : '+ Novo usuário'}
+          </Btn>
+        )}
+        {users.length >= 5 && (
+          <p className="text-steam-muted text-xs mt-2">Limite de 5 usuários atingido.</p>
+        )}
+        {msg && <p className="text-steam-accent text-sm mt-2">{msg}</p>}
+      </Card>
+
+      {showForm && (
+        <Card title="Criar novo usuário">
+          <form onSubmit={criar} className="grid sm:grid-cols-2 gap-4">
+            <Field label="Nome *">
+              <input required value={form.nome} onChange={e => setForm(f=>({...f,nome:e.target.value}))}
+                placeholder="Nome completo" className={inp} />
+            </Field>
+            <Field label="Email *">
+              <input required type="email" value={form.email} onChange={e => setForm(f=>({...f,email:e.target.value}))}
+                placeholder="email@exemplo.com" className={inp} />
+            </Field>
+            <Field label="Senha *" className="sm:col-span-2">
+              <input required type="password" value={form.senha} onChange={e => setForm(f=>({...f,senha:e.target.value}))}
+                placeholder="Senha inicial" className={inp} />
+            </Field>
+            <div className="sm:col-span-2">
+              <Btn type="submit">Criar usuário</Btn>
+            </div>
+          </form>
+        </Card>
+      )}
+    </div>
   )
 }
 
@@ -220,10 +328,7 @@ function SessionsTab() {
   const load = () => api.adminSessions().then(d => setSessions(d.sessions || []))
   useEffect(() => { load() }, [])
 
-  const terminate = async (id) => {
-    await api.terminateSession(id)
-    load()
-  }
+  const terminate = async (id) => { await api.terminateSession(id); load() }
 
   return (
     <Card title={`Sessões ativas (${sessions.length})`}>
@@ -247,9 +352,7 @@ function SessionsTab() {
                     <td className="py-2.5 pr-4 text-steam-muted font-mono text-xs">{s.ip_address}</td>
                     <td className="py-2.5 pr-4 text-steam-muted text-xs">{s.tempo_sessao}</td>
                     <td className="py-2.5">
-                      <button onClick={() => terminate(s.id)} className="text-xs text-red-400 hover:underline">
-                        encerrar
-                      </button>
+                      <button onClick={() => terminate(s.id)} className="text-xs text-red-400 hover:underline">encerrar</button>
                     </td>
                   </tr>
                 ))}
@@ -263,53 +366,69 @@ function SessionsTab() {
 
 /* ── Configurações ── */
 function ConfigTab() {
-  const [config, setConfig] = useState(null)
-  const [saved, setSaved]   = useState(false)
+  const [config, setConfig]       = useState(null)
+  const [saved, setSaved]         = useState(false)
+  const [senhaForm, setSenhaForm] = useState({ atual: '', nova: '', confirma: '' })
+  const [senhaMsg, setSenhaMsg]   = useState('')
+  const [desligando, setDesligando] = useState(false)
+
   useEffect(() => { api.adminConfig().then(d => setConfig(d.config)) }, [])
 
-  const save = async () => {
+  const saveConfig = async () => {
     await api.updateConfig(config)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  const alterarSenha = async (e) => {
+    e.preventDefault()
+    if (senhaForm.nova !== senhaForm.confirma) return setSenhaMsg('As senhas não coincidem.')
+    try {
+      await api.changePassword(senhaForm.atual, senhaForm.nova)
+      setSenhaMsg('Senha alterada com sucesso!')
+      setSenhaForm({ atual: '', nova: '', confirma: '' })
+    } catch (err) { setSenhaMsg('Erro: ' + err.message) }
+  }
+
+  const desligar = async () => {
+    if (!confirm('Desligar o servidor RetroCloud?')) return
+    setDesligando(true)
+    try { await api.shutdown() } catch {}
+    setTimeout(() => setDesligando(false), 3000)
   }
 
   if (!config) return <p className="text-steam-muted">Carregando...</p>
 
   return (
     <div className="space-y-4 max-w-md">
+      {/* Limite de sessões */}
       <Card title="Limites de sessão">
         <div className="space-y-4">
           <Field label={`Sessões simultâneas por usuário: ${config.max_sessions}`}>
             <input type="range" min={1} max={5} value={config.max_sessions}
               onChange={e => setConfig(c => ({...c, max_sessions: +e.target.value}))}
               className="w-full accent-steam-accent" />
-            <div className="flex justify-between text-xs text-steam-muted mt-1">
-              <span>1</span><span>5</span>
-            </div>
+            <div className="flex justify-between text-xs text-steam-muted mt-1"><span>1</span><span>5</span></div>
           </Field>
-
           <label className="flex items-center gap-3 cursor-pointer">
             <input type="checkbox" checked={config.time_limit_enabled}
               onChange={e => setConfig(c => ({...c, time_limit_enabled: e.target.checked}))}
               className="w-4 h-4 accent-steam-accent" />
             <span className="text-steam-text text-sm">Limite de tempo por sessão</span>
           </label>
-
           {config.time_limit_enabled && (
             <Field label={`Limite: ${config.session_time_limit} min`}>
               <input type="range" min={15} max={480} step={15} value={config.session_time_limit}
                 onChange={e => setConfig(c => ({...c, session_time_limit: +e.target.value}))}
                 className="w-full accent-steam-accent" />
-              <div className="flex justify-between text-xs text-steam-muted mt-1">
-                <span>15min</span><span>8h</span>
-              </div>
+              <div className="flex justify-between text-xs text-steam-muted mt-1"><span>15min</span><span>8h</span></div>
             </Field>
           )}
-
-          <Btn onClick={save}>{saved ? '✓ Salvo!' : 'Salvar'}</Btn>
+          <Btn onClick={saveConfig}>{saved ? '✓ Salvo!' : 'Salvar'}</Btn>
         </div>
       </Card>
 
+      {/* Modo de emulação */}
       <Card title="Modo de emulação">
         <div className="space-y-2">
           <p className="text-steam-muted text-sm">
@@ -317,15 +436,53 @@ function ConfigTab() {
               {import.meta.env.VITE_EMULATION_MODE || 'local'}
             </span>
           </p>
-          <p className="text-steam-muted text-xs">
-            Para mudar, edite <code className="text-steam-accent">EMULATION_MODE</code> no arquivo <code className="text-steam-accent">.env</code> e reinicie os containers.
-          </p>
           <div className="bg-steam-bg border border-steam-border rounded p-3 text-xs font-mono text-steam-text space-y-1">
-            <p># Emulação no browser (padrão)</p>
+            <p className="text-steam-muted"># Emulação no browser (padrão)</p>
             <p className="text-green-400">EMULATION_MODE=local</p>
-            <p className="mt-2"># Streaming via servidor (em breve)</p>
+            <p className="text-steam-muted mt-2"># Streaming via servidor (em breve)</p>
             <p className="text-orange-300">EMULATION_MODE=server</p>
           </div>
+          <p className="text-steam-muted text-xs">
+            Edite o <code className="text-steam-accent">.env</code> e reinicie os containers para mudar.
+          </p>
+        </div>
+      </Card>
+
+      {/* Alterar senha */}
+      <Card title="Alterar minha senha">
+        <form onSubmit={alterarSenha} className="space-y-3">
+          <Field label="Senha atual">
+            <input type="password" required value={senhaForm.atual}
+              onChange={e => setSenhaForm(f=>({...f,atual:e.target.value}))}
+              placeholder="••••••••" className={inp} />
+          </Field>
+          <Field label="Nova senha">
+            <input type="password" required value={senhaForm.nova}
+              onChange={e => setSenhaForm(f=>({...f,nova:e.target.value}))}
+              placeholder="••••••••" className={inp} />
+          </Field>
+          <Field label="Confirmar nova senha">
+            <input type="password" required value={senhaForm.confirma}
+              onChange={e => setSenhaForm(f=>({...f,confirma:e.target.value}))}
+              placeholder="••••••••" className={inp} />
+          </Field>
+          {senhaMsg && <p className="text-sm text-steam-accent">{senhaMsg}</p>}
+          <Btn type="submit">Alterar senha</Btn>
+        </form>
+      </Card>
+
+      {/* Desligar servidor */}
+      <Card title="Sistema">
+        <div className="space-y-2">
+          <p className="text-steam-muted text-sm">Encerra todos os containers do RetroCloud.</p>
+          <button
+            onClick={desligar}
+            disabled={desligando}
+            className="px-4 py-2 bg-red-900/40 hover:bg-red-900/70 border border-red-800
+                       text-red-400 rounded text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {desligando ? '⏳ Desligando...' : '⏻ Desligar servidor'}
+          </button>
         </div>
       </Card>
     </div>
@@ -333,7 +490,7 @@ function ConfigTab() {
 }
 
 /* ── Helpers ── */
-const input = `w-full bg-steam-bg border border-steam-border rounded px-3 py-2
+const inp = `w-full bg-steam-bg border border-steam-border rounded px-3 py-2
   text-steam-text placeholder-steam-muted focus:border-steam-accent focus:outline-none text-sm`
 
 function Card({ title, children }) {
@@ -358,13 +515,11 @@ function Field({ label, children, className = '' }) {
 
 function Btn({ children, variant = 'primary', ...props }) {
   return (
-    <button
-      {...props}
+    <button {...props}
       className={`px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 focus-gamepad
         ${variant === 'primary'
           ? 'bg-steam-accent hover:bg-steam-hover text-steam-bg'
-          : 'bg-steam-panel border border-steam-border text-steam-text hover:border-steam-accent'}`}
-    >
+          : 'bg-steam-panel border border-steam-border text-steam-text hover:border-steam-accent'}`}>
       {children}
     </button>
   )

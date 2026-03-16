@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import GameCard from '@/components/GameCard'
-import { useGamepad } from '@/hooks/useGamepad'
+import { useGamepad, useGamepadNavigation } from '@/hooks/useGamepad'
 
 const ALL = 'todos'
 
@@ -33,6 +33,11 @@ export default function LibraryPage() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [system, search])
+
+  // Gamepad: navega na grade, A abre o jogo
+  useGamepadNavigation({
+    onBack: () => navigate(-1),
+  })
 
   // Gamepad: botão Start abre o jogo em foco
   const onAction = useCallback((btn) => {

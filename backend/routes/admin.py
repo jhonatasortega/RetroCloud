@@ -20,6 +20,47 @@ def get_users(current_user):
     users = User.query.all()
     return jsonify({'users': [user.to_dict() for user in users]}), 200
 
+
+@admin_bp.route('/users', methods=['POST'])
+@admin_required
+def create_user(current_user):
+    """Cria um novo usuário (somente admin)."""
+    data = request.get_json()
+    if not data or not data.get('nome') or not data.get('email') or not data.get('senha'):
+        return jsonify({'message': 'Dados incompletos'}), 400
+
+    # Verificar limite de 5 usuários
+    if User.query.count() >= 5:
+        return jsonify({'message': 'Limite de 5 usuários atingido'}), 400
+
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'message': 'Email já cadastrado'}), 400
+
+    import bcrypt
+    senha_hash = bcrypt.hashpw(data['senha'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    novo_usuario = User(
+        nome=data['nome'],
+        email=data['email'],
+        senha_hash=senha_hash,
+        is_admin=data.get('is_admin', False)
+    )
+    try:
+        db.session.add(novo_usuario)
+        db.session.commit()
+        return jsonify({'message': 'Usuário criado', 'user': novo_usuario.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'Erro ao criar usuário', 'error': str(e)}), 500
+
+
+@admin_bp.route('/shutdown', methods=['POST'])
+@admin_required
+def shutdown_server(current_user):
+    """Desliga o servidor (envia SIGTERM para o processo)."""
+    import os, signal
+    os.kill(os.getpid(), signal.SIGTERM)
+    return jsonify({'message': 'Servidor encerrando...'}), 200
+
 @admin_bp.route('/sessions', methods=['GET'])
 @admin_required
 def get_active_sessions(current_user):

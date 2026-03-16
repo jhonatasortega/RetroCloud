@@ -18,9 +18,28 @@ body {
 ::-webkit-scrollbar-thumb { background: #4c6b8a; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #66c0f4; }
 
-/* Foco por teclado/controle — visível nas TVs */
+/* Remove outline padrão — usamos o nosso */
+* { outline: none; }
+
+/* Foco por controle/teclado — visível em TVs */
+[data-gamepad-item]:focus {
+  outline: 3px solid #66c0f4 !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(102,192,244,0.15);
+}
+
+/* Foco em inputs e buttons normais */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 3px solid #66c0f4 !important;
+  outline-offset: 2px;
+}
+
+/* Classe legada mantida para compatibilidade */
 .focus-gamepad:focus {
-  outline: 3px solid #66c0f4;
+  outline: 3px solid #66c0f4 !important;
   outline-offset: 2px;
 }
 
@@ -31,17 +50,31 @@ body {
 }
 .animate-fadein { animation: fadeInUp 0.3s ease both; }
 
-/* Hover de card de jogo */
+/* Card de jogo */
 .game-card {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
 }
-.game-card:hover, .game-card:focus {
-  transform: scale(1.04);
-  box-shadow: 0 0 0 2px #66c0f4, 0 8px 32px rgba(0,0,0,0.6);
-  outline: none;
+.game-card:hover,
+.game-card:focus {
+  transform: scale(1.05);
+  box-shadow: 0 0 0 3px #66c0f4, 0 8px 32px rgba(0,0,0,0.7);
+  outline: none !important;
+}
+.game-card:focus {
+  /* Foco de controle mais proeminente */
+  box-shadow: 0 0 0 3px #66c0f4, 0 0 20px rgba(102,192,244,0.4), 0 8px 32px rgba(0,0,0,0.7);
 }
 
-/* Efeito de brilho no hover da capa */
 .game-card-img { transition: filter 0.15s ease; }
 .game-card:hover .game-card-img,
-.game-card:focus .game-card-img { filter: brightness(1.1); }
+.game-card:focus .game-card-img { filter: brightness(1.12); }
+
+/* TV: texto e elementos maiores em telas grandes */
+@media (min-width: 1920px) {
+  body { font-size: 18px; }
+  [data-gamepad-item]:focus {
+    outline-width: 4px !important;
+    box-shadow: 0 0 0 8px rgba(102,192,244,0.2);
+  }
+}
