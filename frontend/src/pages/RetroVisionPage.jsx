@@ -56,6 +56,19 @@ export default function RetroVisionPage({ onExit }) {
     })
   }, [])
 
+  // Confirmação de saída — declarado antes do useEffect que o usa
+  const [confirmExit, setConfirmExit] = useState(false)
+
+  const tryExit = useCallback(() => {
+    setConfirmExit(true)
+    setTimeout(() => setConfirmExit(false), 3000)
+  }, [])
+
+  const confirmExitNow = useCallback(() => {
+    setConfirmExit(false)
+    onExit?.()
+  }, [onExit])
+
   // ESC pede confirmação para sair
   useEffect(() => {
     const onKey = (e) => {
@@ -85,19 +98,6 @@ export default function RetroVisionPage({ onExit }) {
       setLaunching(false)
     }, 900)
   }, [currentGame, launching, navigate])
-
-  const [confirmExit, setConfirmExit] = useState(false)
-
-  const tryExit = useCallback(() => {
-    setConfirmExit(true)
-    // Auto-cancela após 3s se não confirmar
-    setTimeout(() => setConfirmExit(false), 3000)
-  }, [])
-
-  const confirmExitNow = useCallback(() => {
-    setConfirmExit(false)
-    onExit?.()
-  }, [onExit])
 
   const menuItems = [
     { icon: '▶', label: 'Continuar jogando', action: () => setMenuOpen(false) },
