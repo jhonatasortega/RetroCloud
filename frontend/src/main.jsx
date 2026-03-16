@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useInputMode } from '@/hooks/useInputMode'
-import Navbar from '@/components/Navbar'
+import Navbar         from '@/components/Navbar'
 import LoginPage      from '@/pages/LoginPage'
 import LibraryPage    from '@/pages/LibraryPage'
 import PlayerPage     from '@/pages/PlayerPage'
 import AdminPage      from '@/pages/AdminPage'
-import BigPicturePage from '@/pages/BigPicturePage'
+import RetroVisionPage from '@/pages/RetroVisionPage'
 import '@/index.css'
 
 function InputModeProvider({ children }) {
@@ -34,27 +34,32 @@ function AdminRoute({ children }) {
   return children
 }
 
-// Precisa estar dentro do BrowserRouter para usar useNavigate
+// Dentro do BrowserRouter para ter acesso ao useNavigate
 function AppRoutes() {
   const { user } = useAuth()
-  const [bigPicture, setBigPicture] = useState(false)
+  const [retroVision, setRetroVision] = useState(false)
 
   useEffect(() => {
-    const onConnect = () => {
-      if (!window.location.pathname.startsWith('/play/')) setBigPicture(true)
+    const onConnect    = () => {
+      if (!window.location.pathname.startsWith('/play/')) setRetroVision(true)
     }
-    const onDisconnect = () => setBigPicture(false)
+    const onDisconnect = () => setRetroVision(false)
     window.addEventListener('gamepadconnected',    onConnect)
     window.addEventListener('gamepaddisconnected', onDisconnect)
-    if ([...(navigator.getGamepads?.() || [])].some(Boolean)) setBigPicture(true)
+    // ESC global sai do RetroVision
+    const onKey = (e) => { if (e.key === 'Escape') setRetroVision(false) }
+    window.addEventListener('keydown', onKey)
+    // Verifica controle já conectado
+    if ([...(navigator.getGamepads?.() || [])].some(Boolean)) setRetroVision(true)
     return () => {
       window.removeEventListener('gamepadconnected',    onConnect)
       window.removeEventListener('gamepaddisconnected', onDisconnect)
+      window.removeEventListener('keydown', onKey)
     }
   }, [])
 
-  if (bigPicture && user) {
-    return <BigPicturePage onExit={() => setBigPicture(false)} />
+  if (retroVision && user) {
+    return <RetroVisionPage onExit={() => setRetroVision(false)} />
   }
 
   return (
@@ -63,7 +68,7 @@ function AppRoutes() {
       <Route path="/" element={
         <PrivateRoute>
           <>
-            <Navbar onBigPicture={() => setBigPicture(true)} />
+            <Navbar onRetroVision={() => setRetroVision(true)} />
             <LibraryPage />
           </>
         </PrivateRoute>

@@ -33,17 +33,20 @@ export function useInputMode() {
 
     // Gamepad
     const pollGamepad = () => {
-      const gps = navigator.getGamepads?.() || []
-      for (const gp of gps) {
-        if (!gp) continue
-        const prev = lastGamepadState[gp.index] || {}
-        const anyBtn  = gp.buttons.some((b, i) => b.pressed && !prev[i])
-        const anyAxis = gp.axes.some((a, i) => Math.abs(a) > 0.3 && Math.abs(prev[`ax${i}`] || 0) <= 0.3)
-        if (anyBtn || anyAxis) set('gamepad')
-        const next = {}
-        gp.buttons.forEach((b, i) => { next[i] = b.pressed })
-        gp.axes.forEach((a, i) => { next[`ax${i}`] = a })
-        lastGamepadState[gp.index] = next
+      // Pausa durante o jogo — deixa EmulatorJS receber inputs sem competição
+      if (!window.location.pathname.startsWith('/play/')) {
+        const gps = navigator.getGamepads?.() || []
+        for (const gp of gps) {
+          if (!gp) continue
+          const prev = lastGamepadState[gp.index] || {}
+          const anyBtn  = gp.buttons.some((b, i) => b.pressed && !prev[i])
+          const anyAxis = gp.axes.some((a, i) => Math.abs(a) > 0.3 && Math.abs(prev[`ax${i}`] || 0) <= 0.3)
+          if (anyBtn || anyAxis) set('gamepad')
+          const next = {}
+          gp.buttons.forEach((b, i) => { next[i] = b.pressed })
+          gp.axes.forEach((a, i) => { next[`ax${i}`] = a })
+          lastGamepadState[gp.index] = next
+        }
       }
       gamepadPollId = requestAnimationFrame(pollGamepad)
     }

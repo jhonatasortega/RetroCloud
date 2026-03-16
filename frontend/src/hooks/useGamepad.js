@@ -83,6 +83,11 @@ export function useGamepadNavigation({ onBack, onEnter } = {}) {
   const lastRepeat = useRef(0)
 
   const poll = useCallback(() => {
+    // Não intercepta inputs durante o jogo
+    if (window.location.pathname.startsWith('/play/')) {
+      animRef.current = requestAnimationFrame(poll)
+      return
+    }
     const gps = navigator.getGamepads?.() || []
     const now = performance.now()
 

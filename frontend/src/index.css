@@ -69,31 +69,31 @@ body[data-input-mode="touch"] .game-card:focus {
   transform: scale(1.02);
 }
 
-/* ── Big Picture mode (controle conectado) ── */
-body[data-big-picture="true"] {
+/* ── RetroVision mode (controle conectado) ── */
+body[data-retro-vision="true"] {
   font-size: 20px;
 }
-body[data-big-picture="true"] .game-card {
+body[data-retro-vision="true"] .game-card {
   transform-origin: center;
 }
-body[data-big-picture="true"] .game-card:focus {
+body[data-retro-vision="true"] .game-card:focus {
   transform: scale(1.1) !important;
   box-shadow: 0 0 0 5px #66c0f4, 0 0 40px rgba(102,192,244,0.6), 0 12px 40px rgba(0,0,0,0.9) !important;
   z-index: 10;
   position: relative;
 }
-body[data-big-picture="true"] [data-gamepad-item]:focus {
+body[data-retro-vision="true"] [data-gamepad-item]:focus {
   outline: 5px solid #66c0f4 !important;
   outline-offset: 5px;
   box-shadow: 0 0 0 10px rgba(102,192,244,0.2) !important;
 }
-/* Navbar oculta no Big Picture — mais espaço para os jogos */
-body[data-big-picture="true"] nav {
+/* Navbar oculta no RetroVision — mais espaço para os jogos */
+body[data-retro-vision="true"] nav {
   opacity: 0.3;
   transition: opacity 0.3s;
 }
-body[data-big-picture="true"] nav:hover,
-body[data-big-picture="true"] nav:focus-within {
+body[data-retro-vision="true"] nav:hover,
+body[data-retro-vision="true"] nav:focus-within {
   opacity: 1;
 }
 

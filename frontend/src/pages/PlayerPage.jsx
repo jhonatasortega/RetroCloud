@@ -127,20 +127,36 @@ export default function PlayerPage() {
     script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js'
     document.body.appendChild(script)
 
+    // Limpa o EmulatorJS ao sair da página
     return () => {
+      cancelAnimationFrame(animFrameRef.current)
       const s = document.getElementById('emulatorjs-script')
       if (s) s.remove()
+      const style = document.getElementById('ejs-hide-ui')
+      if (style) style.remove()
+      // Para o emulador se estiver rodando
+      try { window.EJS_emulator?.pause?.() } catch {}
+      // Limpa variáveis globais
+      delete window.EJS_player
+      delete window.EJS_core
+      delete window.EJS_gameUrl
+      delete window.EJS_emulator
     }
   }, [phase, game, playInfo])
 
-  // Poll gamepad para abrir menu
+  // Poll gamepad — só intercepta o Guide/PS para abrir menu
+  // Quando menu está fechado, o EmulatorJS recebe os inputs diretamente
   const pollGamepad = useCallback(() => {
     const gps = navigator.getGamepads?.() || []
     for (const gp of gps) {
       if (!gp) continue
       const prev = prevBtns.current[gp.index] || {}
+
+      // Só verifica botões de menu — NÃO consome outros botões
+      // Isso garante que o EmulatorJS receba D-pad, A, B, etc.
       gp.buttons.forEach((btn, i) => {
-        if (btn.pressed && !prev[i] && MENU_BTNS.includes(i)) {
+        const justPressed = btn.pressed && !prev[i]
+        if (justPressed && MENU_BTNS.includes(i)) {
           setMenuOpen(m => !m)
         }
         prev[i] = btn.pressed
