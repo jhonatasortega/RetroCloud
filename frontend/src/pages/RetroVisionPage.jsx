@@ -89,15 +89,17 @@ export default function RetroVisionPage({ onExit }) {
   useEffect(() => { setGameIdx(0) }, [sysIdx])
 
   // Lança jogo — abre direto, sem precisar de botão extra
+  const currentGameRef = useRef(null)
+  useEffect(() => { currentGameRef.current = currentGame }, [currentGame])
+
   const launchCurrent = useCallback(() => {
-    if (!currentGame || launching) return
-    setLaunchGame(currentGame)
+    const game = currentGameRef.current
+    if (!game || launching) return
+    setLaunchGame(game)
     setLaunching(true)
-    setTimeout(() => {
-      navigate(`/play/${currentGame.id}`)
-      setLaunching(false)
-    }, 900)
-  }, [currentGame, launching, navigate])
+    // Navega imediatamente — a animação acontece por cima
+    setTimeout(() => navigate(`/play/${game.id}`), 600)
+  }, [launching, navigate])
 
   const menuItems = [
     { icon: '▶', label: 'Continuar jogando', action: () => setMenuOpen(false) },
