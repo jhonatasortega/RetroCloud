@@ -370,34 +370,6 @@ function GameMenu({ game, onClose, onBack, onFullscreen }) {
   )
 }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fadein"
-      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-steam-card border border-steam-border rounded-2xl overflow-hidden w-80 shadow-2xl">
-        <div className="px-6 py-4 border-b border-steam-border bg-steam-panel flex items-center gap-3">
-          {game?.thumb ? <img src={game.thumb} alt="" className="w-10 h-12 object-cover rounded" /> : <span className="text-2xl">🎮</span>}
-          <div>
-            <p className="text-white font-medium text-sm">{game?.nome}</p>
-            <p className="text-steam-muted text-xs">{game?.sistema?.toUpperCase()}</p>
-          </div>
-        </div>
-        <div className="py-2">
-          {items.map((item, i) => (
-            <button key={i} onClick={item.action} onMouseEnter={() => setSelected(i)}
-              className={`w-full flex items-center gap-4 px-6 py-3 text-sm transition-colors text-left
-                ${selected === i ? 'bg-steam-accent text-steam-bg font-medium' : 'text-steam-text hover:bg-steam-panel'}`}>
-              <span className="w-5 text-center">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <div className="px-6 py-3 border-t border-steam-border">
-          <p className="text-steam-muted text-xs text-center">↑↓ navegar · Enter confirmar · Esc fechar</p>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function ControlHint() {
   const [visible, setVisible] = useState(true)
