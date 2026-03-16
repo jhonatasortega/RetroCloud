@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -56,8 +55,7 @@ const CarouselCard = memo(function CarouselCard({ game, offset, meta, isCenter, 
 })
 
 // ── Página principal ────────────────────────────────────────────────────────
-export default function RetroVisionPage({ onExit }) {
-  const navigate   = useNavigate()
+export default function RetroVisionPage({ onExit, onLaunch }) {
   const { logout } = useAuth()
 
   const [allGames, setAllGames]   = useState([])
@@ -126,13 +124,13 @@ export default function RetroVisionPage({ onExit }) {
     if (!game || launching) return
     setLaunchGame(game)
     setLaunching(true)
-    setTimeout(() => navigate(`/play/${game.id}`), 700)
-  }, [launching, navigate])
+    setTimeout(() => onLaunch?.(game.id), 700)
+  }, [launching, onLaunch])
 
   const menuItems = [
     { icon: '▶', label: 'Continuar jogando', action: () => setMenuOpen(false) },
     { icon: '🖥', label: 'Modo Desktop',      action: () => { setMenuOpen(false); tryExit() } },
-    { icon: '⏻',  label: 'Sair da conta',     action: () => { logout(); navigate('/login') } },
+    { icon: '⏻',  label: 'Sair da conta',     action: () => { logout(); window.location.href = '/login' } },
   ]
 
   // Poll gamepad com repeat correto

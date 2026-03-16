@@ -59,7 +59,18 @@ function AppRoutes() {
   }, [])
 
   if (retroVision && user) {
-    return <RetroVisionPage onExit={() => setRetroVision(false)} />
+    return (
+      <RetroVisionPage
+        onExit={() => setRetroVision(false)}
+        onLaunch={(id) => {
+          setRetroVision(false)   // desmonta RetroVision
+          // Pequeno delay deixa o React processar o unmount antes do navigate
+          setTimeout(() => {
+            window.location.href = `/play/${id}`
+          }, 50)
+        }}
+      />
+    )
   }
 
   return (
