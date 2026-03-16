@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import TouchGamepad from '@/components/TouchGamepad'
 
 const EMULATOR_SYSTEM_MAP = {
   ps1: 'psx', psx: 'psx',
@@ -23,11 +24,26 @@ export default function PlayerPage() {
 
   const [game, setGame]         = useState(null)
   const [playInfo, setPlay]     = useState(null)
-  const [phase, setPhase]       = useState('loading')   // loading | transition | playing
+  const [phase, setPhase]       = useState('loading')
   const [gamepadConnected, setGamepadConnected] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [error, setError]       = useState('')
+  const [showTouchGamepad, setShowTouchGamepad] = useState(false)
+
+  // Detecta se é touch device
+  useEffect(() => {
+    const isTouch = navigator.maxTouchPoints > 0 ||
+      document.body.dataset.inputMode === 'touch'
+    setShowTouchGamepad(isTouch)
+    // Reage a mudanças de modo (ex: conectar controle físico)
+    const obs = new MutationObserver(() => {
+      const m = document.body.dataset.inputMode
+      setShowTouchGamepad(m === 'touch')
+    })
+    obs.observe(document.body, { attributes: true, attributeFilter: ['data-input-mode'] })
+    return () => obs.disconnect()
+  }, [])
 
   // Detecta controle
   useEffect(() => {
@@ -151,7 +167,7 @@ export default function PlayerPage() {
                 ref={iframeRef}
                 src={emulatorUrl}
                 className="w-full h-full border-0"
-                style={{ minHeight: 'calc(100vh - 48px)' }}
+                style={{ minHeight: showTouchGamepad ? 'calc(100vh - 48px - 160px)' : 'calc(100vh - 48px)' }}
                 allow="gamepad; fullscreen"
                 title={game?.nome}
               />
@@ -159,11 +175,11 @@ export default function PlayerPage() {
               <StreamingStub />
             )}
 
-            {/* Dica de controle — some após 4s */}
-            {gamepadConnected && (
-              <ControlHint />
-            )}
+            {gamepadConnected && <ControlHint />}
           </div>
+
+          {/* Controle touch — aparece automaticamente em celular */}
+          <TouchGamepad visible={showTouchGamepad} />
 
           {/* Menu de overlay (Start/Select ou botão Menu) */}
           {menuOpen && (

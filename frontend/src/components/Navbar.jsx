@@ -2,31 +2,33 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 
+const MODE_CONFIG = {
+  desktop:  { icon: '🖥',  label: 'Desktop',  color: 'text-steam-muted bg-steam-panel' },
+  touch:    { icon: '📱',  label: 'Touch',    color: 'text-blue-400 bg-blue-900/20' },
+  gamepad:  { icon: '🕹',  label: 'Controle', color: 'text-green-400 bg-green-900/30' },
+}
+
 export default function Navbar() {
   const { user, logout } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-  const [gamepadConnected, setGamepadConnected] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const navigate  = useNavigate()
+  const location  = useLocation()
+  const [menuOpen, setMenuOpen]   = useState(false)
+  const [inputMode, setInputMode] = useState('mouse')
 
+  // Lê o data-input-mode do body (atualizado pelo useInputMode global)
   useEffect(() => {
-    const onConnect    = () => setGamepadConnected(true)
-    const onDisconnect = () => setGamepadConnected(
-      [...(navigator.getGamepads?.() || [])].some(Boolean)
-    )
-    window.addEventListener('gamepadconnected',    onConnect)
-    window.addEventListener('gamepaddisconnected', onDisconnect)
-    return () => {
-      window.removeEventListener('gamepadconnected',    onConnect)
-      window.removeEventListener('gamepaddisconnected', onDisconnect)
-    }
+    const obs = new MutationObserver(() => {
+      setInputMode(document.body.dataset.inputMode || 'mouse')
+    })
+    obs.observe(document.body, { attributes: true, attributeFilter: ['data-input-mode'] })
+    return () => obs.disconnect()
   }, [])
 
-  const emulationMode = import.meta.env.VITE_EMULATION_MODE || 'local'
   const isActive = (path) => location.pathname === path
+  const mode = MODE_CONFIG[inputMode] || MODE_CONFIG.mouse
 
   return (
-    <nav className="bg-steam-card border-b border-steam-border px-4 py-0 flex items-center justify-between sticky top-0 z-50 h-14">
+    <nav className="bg-steam-card border-b border-steam-border px-4 flex items-center justify-between sticky top-0 z-50 h-14">
       {/* Logo */}
       <Link to="/" className="flex items-center gap-2 text-white font-bold text-lg hover:text-steam-accent transition-colors">
         <span>🎮</span>
@@ -42,33 +44,20 @@ export default function Navbar() {
       </div>
 
       {/* Status + User */}
-      <div className="flex items-center gap-3">
-        {/* Indicador de gamepad */}
-        <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded ${
-          gamepadConnected
-            ? 'text-green-400 bg-green-900/30'
-            : 'text-steam-muted bg-steam-panel'
-        }`}>
-          <span>🕹</span>
-          <span className="hidden sm:inline">{gamepadConnected ? 'Controle' : 'Sem controle'}</span>
-        </div>
-
-        {/* Modo de emulação */}
-        <div className={`hidden sm:flex items-center gap-1.5 text-xs px-2 py-1 rounded ${
-          emulationMode === 'local'
-            ? 'text-steam-accent bg-steam-panel'
-            : 'text-orange-300 bg-orange-900/30'
-        }`}>
-          <span>{emulationMode === 'local' ? '💻' : '☁️'}</span>
-          <span>{emulationMode === 'local' ? 'Local' : 'Servidor'}</span>
+      <div className="flex items-center gap-2">
+        {/* Badge modo de entrada — muda automaticamente */}
+        <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded transition-all duration-300 ${mode.color}`}>
+          <span>{mode.icon}</span>
+          <span className="hidden sm:inline">{mode.label}</span>
         </div>
 
         {/* Menu do usuário */}
         <div className="relative">
           <button
             onClick={() => setMenuOpen(m => !m)}
+            data-gamepad-item
             className="flex items-center gap-2 bg-steam-panel hover:bg-steam-border
-                       px-3 py-1.5 rounded text-sm text-steam-text transition-colors focus-gamepad"
+                       px-3 py-1.5 rounded text-sm text-steam-text transition-colors"
           >
             <span className="w-6 h-6 rounded-full bg-steam-accent text-steam-bg text-xs
                              flex items-center justify-center font-bold">
@@ -117,7 +106,8 @@ function NavLink({ to, active, children }) {
   return (
     <Link
       to={to}
-      className={`px-4 py-4 text-sm font-medium border-b-2 transition-colors focus-gamepad
+      data-gamepad-item
+      className={`px-4 py-4 text-sm font-medium border-b-2 transition-colors
         ${active
           ? 'border-steam-accent text-steam-accent'
           : 'border-transparent text-steam-muted hover:text-steam-text'}`}
