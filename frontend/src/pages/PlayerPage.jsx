@@ -58,11 +58,10 @@ export default function PlayerPage() {
       .catch(e => { setError(e.message); setPhase('error') })
   }, [id])
 
-  // Inicia transição após carregar
+  // Vai direto para playing — sem fase transition que causa tela preta
   useEffect(() => {
     if (game && playInfo && phase === 'loading') {
-      setPhase('transition')
-      setTimeout(() => setPhase('playing'), 1800)
+      setPhase('playing')
     }
   }, [game, playInfo])
 
@@ -140,20 +139,18 @@ export default function PlayerPage() {
 
     for (const gp of gps) {
       if (!gp) continue
-      const prev = prevBtns.current[gp.index] || {}
-
-      if (sinceMount < 800) {
-        // Flush: só atualiza prev, não dispara ações
-        prevBtns.current[gp.index] = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
-      } else {
+      // Sempre atualiza prev — garante que não há "just pressed" falso após o flush
+      const newState = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+      
+      if (sinceMount >= 1200) {
+        const prev = prevBtns.current[gp.index] || {}
         gp.buttons.forEach((btn, i) => {
           if (btn.pressed && !prev[i] && MENU_BTNS.includes(i)) {
             setMenuOpen(m => !m)
           }
-          prev[i] = btn.pressed
         })
-        prevBtns.current[gp.index] = prev
       }
+      prevBtns.current[gp.index] = newState
     }
     animRef.current = requestAnimationFrame(pollGamepad)
   }, [])
@@ -183,8 +180,6 @@ export default function PlayerPage() {
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {phase === 'transition' && game && <XboxTransition game={game} />}
-
       {phase === 'playing' && (
         <>
           {!fullscreen && (
@@ -248,39 +243,6 @@ export default function PlayerPage() {
   )
 }
 
-function XboxTransition({ game }) {
-  const [step, setStep] = useState(0)
-  useEffect(() => {
-    const t1 = setTimeout(() => setStep(1), 400)
-    const t2 = setTimeout(() => setStep(2), 1200)
-    const t3 = setTimeout(() => setStep(3), 1700)
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
-  }, [])
-  return (
-    <div className={`fixed inset-0 z-50 bg-black flex flex-col items-center justify-center
-      transition-opacity duration-500 ${step === 3 ? 'opacity-0' : 'opacity-100'}`}>
-      <div className={`absolute inset-0 transition-opacity duration-700 ${step >= 1 ? 'opacity-100' : 'opacity-0'}`}
-        style={{ background: 'radial-gradient(ellipse at center, #0a1628 0%, #000 70%)' }} />
-      <div className={`relative z-10 transition-all duration-700 ${step >= 1 ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-        {game.thumb
-          ? <img src={game.thumb} alt={game.nome} className="w-48 h-64 object-cover rounded-xl shadow-2xl"
-              style={{ boxShadow: '0 0 60px rgba(102,192,244,0.3)' }} />
-          : <div className="w-48 h-64 bg-steam-panel rounded-xl flex items-center justify-center text-6xl">🎮</div>}
-      </div>
-      <div className={`relative z-10 mt-6 text-center transition-all duration-500 ${step >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-        <h1 className="text-white text-2xl font-bold">{game.nome}</h1>
-        <p className="text-steam-muted text-sm mt-1">{game.sistema?.toUpperCase()}</p>
-      </div>
-      <div className={`relative z-10 mt-8 w-64 transition-opacity duration-500 ${step >= 2 ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="h-0.5 bg-steam-border rounded-full overflow-hidden">
-          <div className="h-full bg-steam-accent rounded-full" style={{ animation: 'xbox-load 1.4s ease-in-out forwards' }} />
-        </div>
-        <p className="text-steam-muted text-xs text-center mt-3 tracking-widest uppercase">A carregar...</p>
-      </div>
-      <style>{`@keyframes xbox-load { 0%{width:0%} 80%{width:100%} 100%{width:100%;opacity:0} }`}</style>
-    </div>
-  )
-}
 
 function GameMenu({ game, onClose, onBack, onFullscreen }) {
   const [selected, setSelected] = useState(0)
