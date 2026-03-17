@@ -129,13 +129,11 @@ function AppRoutes() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <AuthProvider>
-      <InputModeProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </InputModeProvider>
-    </AuthProvider>
-  </React.StrictMode>
+  <AuthProvider>
+    <InputModeProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </InputModeProvider>
+  </AuthProvider>
 )

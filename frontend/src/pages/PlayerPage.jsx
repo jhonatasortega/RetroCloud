@@ -9,12 +9,12 @@ const CORE_MAP = {
   megadrive: 'segaMD', genesis: 'segaMD', md: 'segaMD', nes: 'nes',
 }
 const GUIDE_BTN = 16
+let _ejsLoadId = null  // guard global — não reseta em StrictMode remount
 
 export default function PlayerPage() {
   const { id } = useParams()
   const animRef    = useRef(null)
   const prevBtns   = useRef({})
-  const ejsStarted = useRef(false)  // guard contra duplo init
 
   const [game, setGame]             = useState(null)
   const [playInfo, setPlay]         = useState(null)
@@ -71,8 +71,9 @@ export default function PlayerPage() {
   // Inicia EmulatorJS — uma única vez graças ao guard ejsStarted
   useEffect(() => {
     if (!game || !playInfo) return
-    if (ejsStarted.current) return  // GUARD: não inicia duas vezes
-    ejsStarted.current = true
+    const loadId = `${id}-${Date.now()}`
+    if (_ejsLoadId === id) return  // já iniciado para este jogo
+    _ejsLoadId = id
 
     const sysKey  = game.sistema?.toLowerCase()
     const core    = CORE_MAP[sysKey] || sysKey
@@ -129,7 +130,7 @@ export default function PlayerPage() {
     setTimeout(init, 200)
 
     return () => {
-      ejsStarted.current = false
+      _ejsLoadId = null
       document.getElementById('emulatorjs-script')?.remove()
       document.getElementById('ejs-hide-ui')?.remove()
       try { window.EJS_emulator?.pause?.() } catch {}
@@ -151,18 +152,22 @@ export default function PlayerPage() {
     return () => clearTimeout(t)
   }, [])
 
-  // Poll — GUIDE abre/fecha menu. Detecta só na DESCIDA (justPressed)
+  const menuOpenRef = useRef(false)
+  useEffect(() => { menuOpenRef.current = menuOpen }, [menuOpen])
+
+  // Poll — só detecta Guide quando menu FECHADO. Quando menu aberto, GameMenu tem seu próprio poll.
   const pollGamepad = useCallback(() => {
-    const gps = navigator.getGamepads?.() || []
-    for (const gp of gps) {
-      if (!gp) continue
-      const prev     = prevBtns.current[gp.index] || {}
-      const newState = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
-      // justPressed = estava solto, agora está pressionado
-      if (newState[GUIDE_BTN] && !prev[GUIDE_BTN]) {
-        setMenuOpen(m => !m)
+    if (!menuOpenRef.current) {
+      const gps = navigator.getGamepads?.() || []
+      for (const gp of gps) {
+        if (!gp) continue
+        const prev     = prevBtns.current[gp.index] || {}
+        const newState = Object.fromEntries(gp.buttons.map((b,i) => [i, b.pressed]))
+        if (newState[GUIDE_BTN] && !prev[GUIDE_BTN]) {
+          setMenuOpen(true)
+        }
+        prevBtns.current[gp.index] = newState
       }
-      prevBtns.current[gp.index] = newState
     }
     animRef.current = requestAnimationFrame(pollGamepad)
   }, [])
