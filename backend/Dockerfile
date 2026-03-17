@@ -17,6 +17,7 @@ COPY . .
 # Expor porta
 EXPOSE 5000
 
-# Comando para iniciar a aplicação
-CMD ["python", "app.py"]
+# Gunicorn — servidor de produção, muito mais rápido que Flask dev
+# 2 workers para Pi 3 (1 CPU core útil + 1 reserva)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "2", "--timeout", "120", "app:app"]
 

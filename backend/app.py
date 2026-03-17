@@ -13,6 +13,11 @@ def create_app():
 
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///database.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    # Otimizações SQLite para Pi 3
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'connect_args': {'check_same_thread': False},
+        'pool_pre_ping': True,
+    }
     app.config['MAX_CONTENT_LENGTH'] = 600 * 1024 * 1024  # 600 MB para ISOs de PS1
     app.config['UPLOAD_FOLDER'] = '/app/static/uploads'
     app.config['THEGAMESDB_API_KEY']    = os.getenv('THEGAMESDB_API_KEY', '')
@@ -31,6 +36,23 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        # WAL mode — muito mais rápido para leituras concorrentes no Pi 3
+        try:
+            db.engine.execute('PRAGMA journal_mode=WAL')
+            db.engine.execute('PRAGMA synchronous=NORMAL')
+            db.engine.execute('PRAGMA cache_size=10000')
+            db.engine.execute('PRAGMA temp_store=MEMORY')
+        except Exception:
+            pass  # SQLAlchemy 2.x usa connection diretamente
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(db.text('PRAGMA journal_mode=WAL'))
+                conn.execute(db.text('PRAGMA synchronous=NORMAL'))
+                conn.execute(db.text('PRAGMA cache_size=10000'))
+                conn.execute(db.text('PRAGMA temp_store=MEMORY'))
+                conn.commit()
+        except Exception:
+            pass
         _seed_defaults()
 
     # ThumbScheduler desativado — busca de capas só via admin manual
