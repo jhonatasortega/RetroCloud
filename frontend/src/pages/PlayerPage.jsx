@@ -31,6 +31,16 @@ export default function PlayerPage() {
     window.location.replace(fromRV.current ? '/?rv=1' : '/')
   }, [])
 
+  // Entra em fullscreen automaticamente quando vem do RetroVision
+  useEffect(() => {
+    if (fromRV.current) {
+      const t = setTimeout(() => {
+        document.getElementById('player-wrap')?.requestFullscreen?.().catch(() => {})
+      }, 800)
+      return () => clearTimeout(t)
+    }
+  }, [])
+
   // Detecta controle, touch e fullscreen
   useEffect(() => {
     const checkGp = () => setGamepadConnected([...(navigator.getGamepads?.() || [])].some(Boolean))
@@ -228,19 +238,8 @@ export default function PlayerPage() {
             minHeight: 400, display: 'block', background: '#000',
           }} />
 
-        {/* Botões flutuantes em fullscreen — dentro do player-wrap para aparecer em fullscreen */}
-        {fullscreen && (
-          <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 9999, display: 'flex', gap: 8 }}>
-            <button onClick={() => setMenuOpen(true)}
-              style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '8px 14px', fontSize: 18, cursor: 'pointer' }}>
-              ☰
-            </button>
-            <button onClick={toggleFullscreen}
-              style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '8px 14px', fontSize: 16, cursor: 'pointer' }}>
-              ✕
-            </button>
-          </div>
-        )}
+        {/* Botões flutuantes em fullscreen — somem após 3s */}
+        {fullscreen && <FullscreenButtons onMenu={() => setMenuOpen(true)} onExit={toggleFullscreen} />}
 
         {gamepadConnected && !menuOpen && <ControlHint />}
 
@@ -254,6 +253,48 @@ export default function PlayerPage() {
       </div>
 
       <TouchGamepad visible={showTouch} />
+    </div>
+  )
+}
+
+function FullscreenButtons({ onMenu, onExit }) {
+  const [visible, setVisible] = useState(true)
+  const timerRef = useRef(null)
+
+  const show = () => {
+    setVisible(true)
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setVisible(false), 3000)
+  }
+
+  useEffect(() => {
+    // Começa visível, some após 3s
+    timerRef.current = setTimeout(() => setVisible(false), 3000)
+    window.addEventListener('mousemove', show)
+    window.addEventListener('touchstart', show)
+    return () => {
+      clearTimeout(timerRef.current)
+      window.removeEventListener('mousemove', show)
+      window.removeEventListener('touchstart', show)
+    }
+  }, [])
+
+  return (
+    <div style={{
+      position: 'absolute', top: 12, right: 12, zIndex: 9999,
+      display: 'flex', gap: 8,
+      opacity: visible ? 1 : 0,
+      transition: 'opacity 0.5s ease',
+      pointerEvents: visible ? 'auto' : 'none',
+    }}>
+      <button onClick={onMenu}
+        style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '8px 14px', fontSize: 18, cursor: 'pointer' }}>
+        ☰
+      </button>
+      <button onClick={onExit}
+        style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, padding: '8px 14px', fontSize: 16, cursor: 'pointer' }}>
+        ✕
+      </button>
     </div>
   )
 }
