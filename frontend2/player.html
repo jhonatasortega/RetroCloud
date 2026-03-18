@@ -81,8 +81,10 @@ if (!id) { location.href = '/library.html'; throw 0 }
 // Volta
 const goBack = () => {
   try { window.EJS_emulator?.pause?.() } catch {}
+  if (document.fullscreenElement) document.exitFullscreen?.()
   sessionStorage.removeItem('rc_from_rv')
-  location.href = fromRV ? '/retrovision.html?back=1' : '/library.html'
+  const dest = fromRV ? '/retrovision.html?back=1' : '/library.html'
+  setTimeout(() => { location.href = dest }, 100)
 }
 document.getElementById('backBtn').addEventListener('click', goBack)
 
@@ -221,17 +223,22 @@ document.getElementById('fsBtns').addEventListener('mousemove', showFsBtns)
 document.getElementById('fsBtns').addEventListener('touchstart', showFsBtns)
 document.getElementById('playerWrap').addEventListener('mousemove', () => { if (isFs) showFsBtns() })
 
-// Mostra botão de fullscreen proeminente no centro
-const fsPrompt = document.createElement('div')
-fsPrompt.id = 'fsPrompt'
-fsPrompt.style.cssText = `position:absolute;inset:0;z-index:20;display:flex;
-  align-items:center;justify-content:center;background:rgba(0,0,0,0.5)`
-fsPrompt.innerHTML = `<button onclick="document.getElementById('fsPrompt').remove();toggleFs()"
-  style="background:#66c0f4;color:#000;border:none;border-radius:12px;
-  padding:16px 40px;font-size:18px;font-weight:700;cursor:pointer">
-  ⊞ Tela Cheia
-</button>`
-document.getElementById('playerWrap').appendChild(fsPrompt)
+// Entra em fullscreen quando EJS iniciar o jogo (dentro do EJS_onGameStart que é disparado pelo user gesture)
+// Se veio de RetroVision, tenta fullscreen ao carregar
+const wantFs = sessionStorage.getItem('rc_want_fs') === '1'
+sessionStorage.removeItem('rc_want_fs')
+if (wantFs) {
+  // Listener para primeiro clique/touch do usuário
+  const fsOnGesture = () => {
+    toggleFs()
+    document.removeEventListener('click', fsOnGesture)
+    document.removeEventListener('touchstart', fsOnGesture)
+    document.removeEventListener('keydown', fsOnGesture)
+  }
+  document.addEventListener('click', fsOnGesture, { once: true })
+  document.addEventListener('touchstart', fsOnGesture, { once: true })
+  document.addEventListener('keydown', fsOnGesture, { once: true })
+}
 
 // Menu
 const MENU_ITEMS = [
@@ -270,6 +277,102 @@ function selectMenuItem(i) {
 }
 
 function openMenu()  { overlay.classList.remove('hidden'); selectMenuItem(0) }
+
+// ── Mapeamento de controle ────────────────────────────────────────────────
+function openMapping() {
+  const gp = [...(navigator.getGamepads?.() || [])].find(Boolean)
+  const overlay = document.createElement('div')
+  overlay.id = 'mappingOverlay'
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:600;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)'
+
+  const BUTTONS = [
+    { id:12, label:'↑', pos:[160,90] }, { id:13, label:'↓', pos:[160,150] },
+    { id:14, label:'←', pos:[100,120] }, { id:15, label:'→', pos:[220,120] },
+    { id:0,  label:'A', pos:[420,130], color:'#4caf50' },
+    { id:1,  label:'B', pos:[460,165], color:'#f44336' },
+    { id:2,  label:'X', pos:[380,165], color:'#2196f3' },
+    { id:3,  label:'Y', pos:[420,200], color:'#ff9800' },
+    { id:4,  label:'LB', pos:[60,40] }, { id:5,  label:'RB', pos:[450,40] },
+    { id:8,  label:'SEL', pos:[180,250] }, { id:9, label:'STA', pos:[280,250] },
+    { id:16, label:'Guide', pos:[230,220], color:'#66c0f4' },
+  ]
+
+  const AXES = [
+    { id:'ax0', label:'L←→', cx:130, cy:200 },
+    { id:'ax1', label:'L↑↓', cx:130, cy:200 },
+    { id:'ax2', label:'R←→', cx:340, cy:200 },
+    { id:'ax3', label:'R↑↓', cx:340, cy:200 },
+  ]
+
+  let listening = null
+  let animId = null
+
+  function btnColor(id) {
+    const gp2 = [...(navigator.getGamepads?.() || [])].find(Boolean)
+    if (!gp2) return ''
+    return gp2.buttons[id]?.pressed ? 'background:rgba(255,255,255,0.3);' : ''
+  }
+
+  function renderSVG() {
+    const gp2 = [...(navigator.getGamepads?.() || [])].find(Boolean)
+    return `<svg width="560" height="300" style="overflow:visible">
+      <!-- Corpo do controle -->
+      <ellipse cx="280" cy="170" rx="200" ry="110" fill="#1a1a2e" stroke="#333" stroke-width="2"/>
+      <ellipse cx="180" cy="190" rx="60" ry="60" fill="#111" stroke="#333"/>
+      <ellipse cx="350" cy="210" rx="45" ry="45" fill="#111" stroke="#333"/>
+      <!-- Gatilhos -->
+      <path d="M100,60 Q80,30 110,20 L180,30 Q160,50 140,60Z" fill="#222" stroke="#444"/>
+      <path d="M460,60 Q480,30 450,20 L380,30 Q400,50 420,60Z" fill="#222" stroke="#444"/>
+      ${BUTTONS.map(b => {
+        const pressed = gp2?.buttons[b.id]?.pressed
+        const col = pressed ? (b.color||'#fff') : '#555'
+        const bg = pressed ? 'rgba(255,255,255,0.15)' : 'transparent'
+        return `<g style="cursor:pointer" onclick="startListen(${b.id})">
+          <circle cx="${b.pos[0]}" cy="${b.pos[1]}" r="16" fill="${bg}" stroke="${col}" stroke-width="${listening===b.id?3:1.5}"/>
+          <text x="${b.pos[0]}" y="${b.pos[1]+5}" text-anchor="middle" fill="${col}" font-size="11" font-weight="700">${b.label}</text>
+        </g>`
+      }).join('')}
+      <!-- Analógicos -->
+      <circle cx="130" cy="190" r="28" fill="#333" stroke="#555"/>
+      ${gp2 ? `<circle cx="${130+(gp2.axes[0]||0)*20}" cy="${190+(gp2.axes[1]||0)*20}" r="10" fill="#66c0f4"/>` : '<circle cx="130" cy="190" r="10" fill="#444"/>'}
+      <circle cx="350" cy="210" r="22" fill="#333" stroke="#555"/>
+      ${gp2 ? `<circle cx="${350+(gp2.axes[2]||0)*16}" cy="${210+(gp2.axes[3]||0)*16}" r="8" fill="#66c0f4"/>` : '<circle cx="350" cy="210" r="8" fill="#444"/>'}
+    </svg>`
+  }
+
+  function render() {
+    const content = overlay.querySelector('#mappingContent')
+    if (!content) return
+    content.querySelector('#controllerSVG').innerHTML = renderSVG()
+    if (listening !== null) {
+      content.querySelector('#listenMsg').textContent = `Pressione o botão para mapear como "${BUTTONS.find(b=>b.id===listening)?.label}"...`
+    } else {
+      content.querySelector('#listenMsg').textContent = 'Clique em um botão para remapear'
+    }
+  }
+
+  overlay.innerHTML = `<div id="mappingContent" style="text-align:center;color:#fff;max-width:600px;width:100%;padding:20px">
+    <div style="font-family:Rajdhani,sans-serif;font-size:24px;font-weight:700;margin-bottom:8px;color:#66c0f4">🎮 Mapeamento de Controle</div>
+    <div id="listenMsg" style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:16px">Clique em um botão para remapear</div>
+    <div id="controllerSVG">${renderSVG()}</div>
+    <div style="margin-top:16px;display:flex;gap:12px;justify-content:center">
+      <button onclick="document.getElementById('mappingOverlay').remove();cancelAnimationFrame(window._mapAnimId)"
+        style="background:#333;color:#fff;border:1px solid #555;border-radius:8px;padding:8px 24px;cursor:pointer">Fechar</button>
+      <button onclick="if(window.EJS_emulator?.openGamepadConfig)window.EJS_emulator.openGamepadConfig();else alert('Use as configurações do EmulatorJS para mapeamento avançado')"
+        style="background:#66c0f4;color:#000;border:none;border-radius:8px;padding:8px 24px;font-weight:700;cursor:pointer">Config EmulatorJS</button>
+    </div>
+  </div>`
+
+  document.getElementById('playerWrap').appendChild(overlay)
+
+  // Poll para mostrar estado dos botões em tempo real
+  window._mapAnimId = requestAnimationFrame(function loop() {
+    if (!document.getElementById('mappingOverlay')) return
+    render()
+    window._mapAnimId = requestAnimationFrame(loop)
+  })
+}
+
 function closeMenu() { overlay.classList.add('hidden') }
 
 document.getElementById('menuBtn').addEventListener('click', openMenu)

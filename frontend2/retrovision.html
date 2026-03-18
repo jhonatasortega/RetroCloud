@@ -80,19 +80,19 @@ const tvMode = isTVMode()
 const isBack = new URLSearchParams(location.search).get('back') === '1'
 
 const SYS_META = {
-  snes:      { label:'Super Nintendo',  color:'#7c3aed', glow:'#a855f7', emoji:'🎮' },
-  n64:       { label:'Nintendo 64',     color:'#dc2626', glow:'#ef4444', emoji:'🕹️' },
-  ps1:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', emoji:'🎯' },
-  psx:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', emoji:'🎯' },
-  megadrive: { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', emoji:'⚡' },
-  genesis:   { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', emoji:'⚡' },
-  md:        { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', emoji:'⚡' },
-  gba:       { label:'Game Boy Advance',color:'#b45309', glow:'#f59e0b', emoji:'🌟' },
-  gbc:       { label:'Game Boy Color',  color:'#15803d', glow:'#22c55e', emoji:'🎨' },
-  gb:        { label:'Game Boy',        color:'#374151', glow:'#9ca3af', emoji:'📱' },
-  nes:       { label:'NES',             color:'#9f1239', glow:'#f43f5e', emoji:'🔴' },
+  snes:      { label:'Super Nintendo',  color:'#7c3aed', glow:'#a855f7', logo:'/img/systems/snes.svg' },
+  n64:       { label:'Nintendo 64',     color:'#dc2626', glow:'#ef4444', logo:'/img/systems/n64.svg' },
+  ps1:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', logo:'/img/systems/ps1.svg' },
+  psx:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', logo:'/img/systems/ps1.svg' },
+  megadrive: { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', logo:'/img/systems/megadrive.svg' },
+  genesis:   { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', logo:'/img/systems/megadrive.svg' },
+  md:        { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', logo:'/img/systems/megadrive.svg' },
+  gba:       { label:'Game Boy Advance',color:'#b45309', glow:'#f59e0b', logo:'/img/systems/gba.svg' },
+  gbc:       { label:'Game Boy Color',  color:'#15803d', glow:'#22c55e', logo:'/img/systems/gba.svg' },
+  gb:        { label:'Game Boy',        color:'#374151', glow:'#9ca3af', logo:'/img/systems/gba.svg' },
+  nes:       { label:'NES',             color:'#9f1239', glow:'#f43f5e', logo:'/img/systems/nes.svg' },
 }
-const DEF_META = { label:'Outros', color:'#4b5563', glow:'#9ca3af', emoji:'🎮' }
+const DEF_META = { label:'Outros', color:'#4b5563', glow:'#9ca3af', logo:null }
 
 let allGames = [], systems = [], sysIdx = 0, gameIdx = 0
 let menuOpen = false, confirmOpen = false, confirmSel = 0
@@ -157,7 +157,10 @@ function renderSystems() {
     const active = i === sysIdx
     return `<button class="rv-sys-btn${active?' active':''}" data-idx="${i}"
       style="color:${active ? m.glow : 'rgba(255,255,255,0.4)'}">
-      <span class="rv-sys-emoji" style="font-size:${active?'26px':'18px'};transition:font-size 0.2s">${m.emoji||'🎮'}</span>
+      ${m.logo
+        ? `<img src="${m.logo}" style="height:${active?30:20}px;width:auto;max-width:80px;object-fit:contain;
+             opacity:${active?1:0.4};transition:all 0.2s;filter:drop-shadow(0 0 4px ${m.glow})">`
+        : `<span style="font-size:${active?'26px':'18px'}">🎮</span>`}
       <span class="rv-sys-label">${m.label}</span>
     </button>`
   }).join('')
@@ -270,6 +273,7 @@ function launchGame() {
 
   setTimeout(() => {
     sessionStorage.setItem('rc_from_rv', '1')
+    sessionStorage.setItem('rc_want_fs', '1')  // sinaliza que quer fullscreen
     window.location.href = `/player.html?id=${g.id}`
   }, 700)
 }

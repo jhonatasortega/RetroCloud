@@ -107,17 +107,19 @@ async function renderRoms(el) {
           tryBtn.className = 'btn btn-primary btn-sm'
           tryBtn.style.marginLeft = '4px'
           tryBtn.textContent = '→'
-          tryBtn.addEventListener('click', async () => {
-            tryBtn.disabled = true
+          const doSearch = async () => {
+            tryBtn.disabled = true; tryBtn.textContent = '...'
             try {
-              await api.fetchThumbNome(b.dataset.id, input.value)
+              await api.fetchThumbNome(b.dataset.id, input.value.trim())
               toastOk('Capa encontrada!')
               loadTab('roms')
             } catch(e2) {
               toastErr('Não encontrado: ' + input.value)
-              tryBtn.disabled = false
+              tryBtn.disabled = false; tryBtn.textContent = '→'
             }
-          })
+          }
+          tryBtn.addEventListener('click', doSearch)
+          input.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch() })
           b.parentNode.appendChild(input)
           b.parentNode.appendChild(tryBtn)
           input.focus(); input.select()
