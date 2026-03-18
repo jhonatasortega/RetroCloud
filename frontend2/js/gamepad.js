@@ -11,6 +11,26 @@ let _held     = {}
 const HOLD_DELAY  = 400
 const HOLD_REPEAT = 130
 
+// ── Remapeamento ───────────────────────────────────────────────────────────
+const MAP_KEY = 'rc_gamepad_map'
+
+export function getMappings() {
+  try { return JSON.parse(localStorage.getItem(MAP_KEY) || '{}') } catch { return {} }
+}
+export function setMapping(physical, virtual_) {
+  const m = getMappings()
+  m[physical] = virtual_
+  localStorage.setItem(MAP_KEY, JSON.stringify(m))
+}
+export function resetMappings() {
+  localStorage.removeItem(MAP_KEY)
+}
+
+function applyMap(physical) {
+  const m = getMappings()
+  return m[physical] !== undefined ? m[physical] : physical
+}
+
 export function onGamepad(fn) {
   _handlers.push(fn)
   return () => { _handlers = _handlers.filter(h => h !== fn) }
@@ -42,7 +62,7 @@ function poll() {
 
       if (down && !wasDown) {
         // Just pressed
-        emit(i, 'press')
+        emit(applyMap(i), 'press')
         _held[i] = { start: now, last: now }
       } else if (!down && wasDown) {
         // Released
@@ -52,7 +72,7 @@ function poll() {
         const h = _held[i]
         if ((now - h.start) > HOLD_DELAY && (now - h.last) > HOLD_REPEAT) {
           h.last = now
-          emit(i, 'hold')
+          emit(applyMap(i), 'hold')
         }
       }
     })

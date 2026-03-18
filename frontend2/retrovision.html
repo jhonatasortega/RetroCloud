@@ -47,6 +47,19 @@
     </div>
   </div>
 
+  <!-- Modal de remapeamento de controle -->
+  <div class="rv-menu-overlay hidden" id="rvRemapOverlay">
+    <div class="rv-menu" style="min-width:340px;max-width:480px">
+      <div class="rv-menu-header"><div class="rv-menu-title">Configurar Controle</div></div>
+      <div id="rvRemapList" style="max-height:55vh;overflow-y:auto"></div>
+      <div style="display:flex;gap:8px;padding:12px 16px">
+        <button class="btn btn-secondary btn-sm" id="rvRemapReset" style="flex:1">Restaurar padrão</button>
+        <button class="btn btn-primary btn-sm" id="rvRemapClose" style="flex:1">Fechar</button>
+      </div>
+      <div class="rv-menu-hint" id="rvRemapHint">Clique em Remapear e pressione o botão desejado</div>
+    </div>
+  </div>
+
   <!-- Confirmação saída (não-TV) -->
   <div class="rv-confirm hidden" id="rvConfirm">
     <div class="rv-confirm-box" id="rvConfirmBox">
@@ -63,7 +76,7 @@
 <script type="module">
 import { api } from '/js/api.js'
 import { requireAuth, logout } from '/js/auth.js'
-import { startGamepad, onGamepad, BTN, hasGamepad } from '/js/gamepad.js'
+import { startGamepad, onGamepad, BTN, hasGamepad, getMappings, setMapping, resetMappings } from '/js/gamepad.js'
 
 const user = await requireAuth()
 if (!user) throw 0
@@ -330,9 +343,10 @@ document.getElementById('rvPlayBtn').addEventListener('click', launchGame)
 
 // Menu Guide
 const MENU_ITEMS = [
-  { icon:'▶', label:'Continuar',     action: closeMenu },
+  { icon:'▶', label:'Continuar',           action: closeMenu },
+  { icon:'🎮', label:'Configurar controle', action: () => { closeMenu(); openRemapRV() } },
   ...(tvMode ? [] : [{ icon:'🖥', label:'Modo Desktop', action: () => { closeMenu(); tryExit() } }]),
-  { icon:'⏻',  label:'Sair da conta', action: () => { logout() } },
+  { icon:'⏻',  label:'Sair da conta',       action: () => { logout() } },
 ]
 
 function openMenu() {
@@ -391,6 +405,11 @@ function setupGamepad() {
     if (type !== 'press' && type !== 'hold') return
     const press = type === 'press'
     const nav   = type === 'press' || type === 'hold'
+
+    if (!document.getElementById('rvRemapOverlay').classList.contains('hidden')) {
+      if (press && (btn === BTN.B || btn === BTN.GUIDE)) closeRemapRV()
+      return
+    }
 
     if (menuOpen) {
       if (press && btn === BTN.UP)    selectMenu(Math.max(0, menuSel-1))
@@ -507,6 +526,89 @@ function setupKeyboard() {
     if (e.key === 'Escape' && !tvMode) tryExit()
   })
 }
+
+// ── Remapeamento de controle (RetroVision) ─────────────────────────────────
+const RV_REMAP_ACTIONS = [
+  { name:'Guide (Menu)',   btn: BTN.GUIDE  },
+  { name:'A (Confirmar)',  btn: BTN.A      },
+  { name:'B (Voltar)',     btn: BTN.B      },
+  { name:'Cima',           btn: BTN.UP     },
+  { name:'Baixo',          btn: BTN.DOWN   },
+  { name:'Esquerda',       btn: BTN.LEFT   },
+  { name:'Direita',        btn: BTN.RIGHT  },
+  { name:'LB (sistema ←)', btn: BTN.LB     },
+  { name:'RB (sistema →)', btn: BTN.RB     },
+]
+const RV_BTN_NAMES = {
+  [BTN.A]:'A', [BTN.B]:'B', [BTN.X]:'X', [BTN.Y]:'Y',
+  [BTN.LB]:'LB', [BTN.RB]:'RB', [BTN.LT]:'LT', [BTN.RT]:'RT',
+  [BTN.SELECT]:'Select', [BTN.START]:'Start',
+  [BTN.UP]:'Cima', [BTN.DOWN]:'Baixo', [BTN.LEFT]:'Esq', [BTN.RIGHT]:'Dir',
+  [BTN.GUIDE]:'Guide',
+}
+
+let rvRemapListening = null
+let rvRemapInterval  = null
+
+function renderRemapRV() {
+  const map = getMappings()
+  const inv = {}
+  Object.entries(map).forEach(([phys, virt]) => { inv[virt] = +phys })
+
+  const list = document.getElementById('rvRemapList')
+  list.innerHTML = RV_REMAP_ACTIONS.map(a => {
+    const physBtn = inv[a.btn] !== undefined ? inv[a.btn] : a.btn
+    const label   = RV_BTN_NAMES[physBtn] !== undefined ? RV_BTN_NAMES[physBtn] : `Btn ${physBtn}`
+    return `<button class="rv-menu-item" style="justify-content:space-between;padding:10px 16px" data-virtual="${a.btn}">
+      <span>${a.name}</span>
+      <span class="remap-rv-label" style="font-size:11px;color:#66c0f4;background:#66c0f420;
+        padding:2px 10px;border-radius:6px">${label}</span>
+    </button>`
+  }).join('')
+
+  list.querySelectorAll('.rv-menu-item').forEach(b => {
+    b.addEventListener('click', () => startListeningRV(+b.dataset.virtual, b.querySelector('.remap-rv-label')))
+  })
+}
+
+function startListeningRV(virtualBtn, labelEl) {
+  if (rvRemapListening !== null) stopListeningRV()
+  rvRemapListening = virtualBtn
+  if (labelEl) { labelEl.textContent = '...'; labelEl.style.background = '#66c0f440' }
+  document.getElementById('rvRemapHint').textContent = 'Pressione um botão no controle...'
+
+  rvRemapInterval = setInterval(() => {
+    const gps = navigator.getGamepads?.() || []
+    for (const gp of gps) {
+      if (!gp) continue
+      gp.buttons.forEach((btn, i) => {
+        if (btn.pressed && rvRemapListening !== null) {
+          setMapping(i, rvRemapListening)
+          stopListeningRV()
+          renderRemapRV()
+        }
+      })
+    }
+  }, 50)
+}
+
+function stopListeningRV() {
+  if (rvRemapInterval) { clearInterval(rvRemapInterval); rvRemapInterval = null }
+  rvRemapListening = null
+  document.getElementById('rvRemapHint').textContent = 'Clique em um botão para remapear'
+}
+
+function openRemapRV() {
+  renderRemapRV()
+  document.getElementById('rvRemapOverlay').classList.remove('hidden')
+}
+function closeRemapRV() {
+  stopListeningRV()
+  document.getElementById('rvRemapOverlay').classList.add('hidden')
+}
+
+document.getElementById('rvRemapClose').addEventListener('click', closeRemapRV)
+document.getElementById('rvRemapReset').addEventListener('click', () => { resetMappings(); renderRemapRV() })
 
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')

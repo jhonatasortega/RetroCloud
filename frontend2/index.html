@@ -13,6 +13,7 @@
       <h1>RetroCloud</h1>
       <p>Sua biblioteca retro pessoal</p>
     </div>
+    <!-- Login -->
     <form class="login-form" id="loginForm">
       <div class="form-group">
         <label class="form-label" for="email">Email</label>
@@ -26,8 +27,31 @@
       <button class="btn btn-primary" type="submit" id="loginBtn" style="width:100%;justify-content:center;margin-top:4px">
         Entrar
       </button>
-      <p class="text-sm text-muted" style="text-align:center">
-        Problemas? <a href="mailto:suporte@retrocloud.online" class="text-accent">suporte@retrocloud.online</a>
+      <p class="text-sm text-muted" style="text-align:center;margin-top:12px">
+        Não tem conta? <a href="#" id="showRegister" class="text-accent">Cadastrar</a>
+      </p>
+    </form>
+
+    <!-- Cadastro -->
+    <form class="login-form hidden" id="registerForm">
+      <div class="form-group">
+        <label class="form-label" for="regNome">Nome</label>
+        <input class="input" type="text" id="regNome" placeholder="Seu nome" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="regEmail">Email</label>
+        <input class="input" type="email" id="regEmail" placeholder="seu@email.com" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="regSenha">Senha</label>
+        <input class="input" type="password" id="regSenha" placeholder="••••••••" autocomplete="new-password" required>
+      </div>
+      <div id="registerError" class="text-danger text-sm hidden"></div>
+      <button class="btn btn-primary" type="submit" id="registerBtn" style="width:100%;justify-content:center;margin-top:4px">
+        Criar conta
+      </button>
+      <p class="text-sm text-muted" style="text-align:center;margin-top:12px">
+        Já tem conta? <a href="#" id="showLogin" class="text-accent">Entrar</a>
       </p>
     </form>
   </div>
@@ -45,6 +69,19 @@ if (token) {
   } catch { /* token inválido, continua */ }
 }
 
+// Toggle login ↔ cadastro
+document.getElementById('showRegister').addEventListener('click', e => {
+  e.preventDefault()
+  document.getElementById('loginForm').classList.add('hidden')
+  document.getElementById('registerForm').classList.remove('hidden')
+})
+document.getElementById('showLogin').addEventListener('click', e => {
+  e.preventDefault()
+  document.getElementById('registerForm').classList.add('hidden')
+  document.getElementById('loginForm').classList.remove('hidden')
+})
+
+// Login
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault()
   const btn = document.getElementById('loginBtn')
@@ -65,6 +102,32 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     err.classList.remove('hidden')
     btn.disabled = false
     btn.textContent = 'Entrar'
+  }
+})
+
+// Cadastro
+document.getElementById('registerForm').addEventListener('submit', async e => {
+  e.preventDefault()
+  const btn = document.getElementById('registerBtn')
+  const err = document.getElementById('registerError')
+  const nome  = document.getElementById('regNome').value.trim()
+  const email = document.getElementById('regEmail').value.trim()
+  const senha = document.getElementById('regSenha').value
+
+  btn.disabled = true
+  btn.textContent = 'Criando conta...'
+  err.classList.add('hidden')
+
+  try {
+    await api.register(nome, email, senha)
+    const data = await api.login(email, senha)
+    setToken(data.token)
+    window.location.href = '/library.html'
+  } catch (e) {
+    err.textContent = e.message || 'Erro ao criar conta'
+    err.classList.remove('hidden')
+    btn.disabled = false
+    btn.textContent = 'Criar conta'
   }
 })
 </script>

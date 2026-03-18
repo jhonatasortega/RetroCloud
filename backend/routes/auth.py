@@ -35,6 +35,8 @@ def change_password():
     user.senha_hash = bcrypt.hashpw(data['senha_nova'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     db.session.commit()
     return jsonify({'message': 'Senha alterada com sucesso'}), 200
+
+@auth_bp.route('/register', methods=['POST'])
 def register():
     """Registra um novo usuário."""
     data = request.get_json()

@@ -34,10 +34,11 @@ async function req(method, path, body, isForm = false) {
 
 export const api = {
   // Auth
-  login:     (email, senha)  => req('POST', '/auth/login', { email, senha }),
-  me:        ()              => req('GET',  '/auth/me'),
-  logout:    ()              => req('POST', '/auth/logout'),
-  changePass:(atual, nova)   => req('POST', '/auth/change-password', { senha_atual: atual, senha_nova: nova }),
+  login:     (email, senha)        => req('POST', '/auth/login',    { email, senha }),
+  register:  (nome, email, senha)  => req('POST', '/auth/register', { nome, email, senha }),
+  me:        ()                    => req('GET',  '/auth/me'),
+  logout:    ()                    => req('POST', '/auth/logout'),
+  changePass:(atual, nova)         => req('POST', '/auth/change-password', { senha_atual: atual, senha_nova: nova }),
 
   // Games
   games:     (params = {})   => {
@@ -47,6 +48,8 @@ export const api = {
   game:      (id)            => req('GET',  `/games/${id}`),
   play:      (id)            => req('GET',  `/games/${id}/play`),
   systems:   ()              => req('GET',  '/games/systems'),
+  saveState: (id, b64)       => req('POST', `/games/${id}/save`, { save_data: b64 }),
+  loadState: (id)            => req('GET',  `/games/${id}/save`),
 
   // Admin
   adminUsers:      ()        => req('GET',    '/admin/users'),
