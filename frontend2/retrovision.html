@@ -109,8 +109,14 @@ const intro = document.getElementById('rvIntro')
 const app   = document.getElementById('retrovision')
 
 if (isBack) {
-  // Limpa ?back=1 da URL sem reload
   history.replaceState({}, '', '/retrovision.html')
+  // Restaura posição salva
+  const savedSys  = parseInt(sessionStorage.getItem('rc_rv_sys')  || '0')
+  const savedGame = parseInt(sessionStorage.getItem('rc_rv_game') || '0')
+  sessionStorage.removeItem('rc_rv_sys')
+  sessionStorage.removeItem('rc_rv_game')
+  if (!isNaN(savedSys) && savedSys < systems.length)   sysIdx  = savedSys
+  if (!isNaN(savedGame)) gameIdx = savedGame
   intro.style.display = 'none'
   app.classList.remove('hidden')
   init()
@@ -287,7 +293,9 @@ function launchGame() {
 
   setTimeout(() => {
     sessionStorage.setItem('rc_from_rv', '1')
-    sessionStorage.setItem('rc_want_fs', '1')  // sinaliza que quer fullscreen
+    sessionStorage.setItem('rc_want_fs', '1')
+    sessionStorage.setItem('rc_rv_sys', sysIdx)
+    sessionStorage.setItem('rc_rv_game', gameIdx)
     window.location.href = `/player.html?id=${g.id}`
   }, 700)
 }

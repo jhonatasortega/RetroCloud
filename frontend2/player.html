@@ -164,6 +164,10 @@ function initEJS() {
 
   // Callback quando jogo começa — esconde loading screen e entra em fullscreen
   window.EJS_onGameStart = () => {
+    // requestFullscreen DEVE ser chamado aqui sincronicamente — dentro do gesture
+    if (!document.fullscreenElement) {
+      document.getElementById('playerWrap')?.requestFullscreen?.().catch(() => {})
+    }
     clearInterval(window._rcBarTimer)
     const bar = document.getElementById('loadBar')
     const scr = document.getElementById('loadingScreen')
@@ -174,10 +178,6 @@ function initEJS() {
         setTimeout(() => { if (scr) scr.style.display = 'none' }, 500)
       }
       window.dispatchEvent(new Event('resize'))
-      // Fullscreen automático — EJS_onGameStart é disparado dentro de um gesture
-      if (!document.fullscreenElement) {
-        document.getElementById('playerWrap')?.requestFullscreen?.().catch(() => {})
-      }
     }, 300)
   }
 
@@ -285,98 +285,171 @@ function openMenu()  { overlay.classList.remove('hidden'); selectMenuItem(0) }
 
 // ── Mapeamento de controle ────────────────────────────────────────────────
 function openMapping() {
-  const gp = [...(navigator.getGamepads?.() || [])].find(Boolean)
+  // Remove overlay anterior se existir
+  document.getElementById('mappingOverlay')?.remove()
+  cancelAnimationFrame(window._mapAnimId)
+
   const overlay = document.createElement('div')
   overlay.id = 'mappingOverlay'
-  overlay.style.cssText = 'position:absolute;inset:0;z-index:600;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)'
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:600;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(6px)'
 
-  const BUTTONS = [
-    { id:12, label:'↑', pos:[160,90] }, { id:13, label:'↓', pos:[160,150] },
-    { id:14, label:'←', pos:[100,120] }, { id:15, label:'→', pos:[220,120] },
-    { id:0,  label:'A', pos:[420,130], color:'#4caf50' },
-    { id:1,  label:'B', pos:[460,165], color:'#f44336' },
-    { id:2,  label:'X', pos:[380,165], color:'#2196f3' },
-    { id:3,  label:'Y', pos:[420,200], color:'#ff9800' },
-    { id:4,  label:'LB', pos:[60,40] }, { id:5,  label:'RB', pos:[450,40] },
-    { id:8,  label:'SEL', pos:[180,250] }, { id:9, label:'STA', pos:[280,250] },
-    { id:16, label:'Guide', pos:[230,220], color:'#66c0f4' },
+  // Definição dos botões com posições no SVG 540x300
+  const BTN_DEFS = [
+    // D-pad
+    { idx:12, label:'↑',     x:118, y:148, r:14 },
+    { idx:13, label:'↓',     x:118, y:190, r:14 },
+    { idx:14, label:'←',     x: 96, y:169, r:14 },
+    { idx:15, label:'→',     x:140, y:169, r:14 },
+    // Ação
+    { idx: 0, label:'A',     x:398, y:169, r:16, color:'#4caf50' },
+    { idx: 1, label:'B',     x:420, y:192, r:16, color:'#f44336' },
+    { idx: 2, label:'X',     x:375, y:192, r:16, color:'#2196f3' },
+    { idx: 3, label:'Y',     x:398, y:215, r:16, color:'#ff9800' },
+    // Bumpers
+    { idx: 4, label:'LB',    x: 88, y: 62, r:18 },
+    { idx: 5, label:'RB',    x:452, y: 62, r:18 },
+    // Start/Select
+    { idx: 8, label:'SEL',   x:210, y:172, r:16 },
+    { idx: 9, label:'STA',   x:280, y:172, r:16 },
+    // Guide
+    { idx:16, label:'⬤',    x:245, y:145, r:20, color:'#66c0f4' },
+    // Analógicos (clique)
+    { idx:10, label:'L3',    x:160, y:210, r:24 },
+    { idx:11, label:'R3',    x:330, y:225, r:24 },
   ]
 
-  const AXES = [
-    { id:'ax0', label:'L←→', cx:130, cy:200 },
-    { id:'ax1', label:'L↑↓', cx:130, cy:200 },
-    { id:'ax2', label:'R←→', cx:340, cy:200 },
-    { id:'ax3', label:'R↑↓', cx:340, cy:200 },
-  ]
+  let listening = null  // idx do botão aguardando input
+  let bindings = {}     // mapa customizado: btn_idx → gamepad_button_idx
+  let pollId = null
 
-  let listening = null
-  let animId = null
+  // Carrega bindings salvos
+  try { bindings = JSON.parse(localStorage.getItem('rc_bindings') || '{}') } catch {}
 
-  function btnColor(id) {
-    const gp2 = [...(navigator.getGamepads?.() || [])].find(Boolean)
-    if (!gp2) return ''
-    return gp2.buttons[id]?.pressed ? 'background:rgba(255,255,255,0.3);' : ''
-  }
+  function getGP() { return [...(navigator.getGamepads?.() || [])].find(Boolean) }
 
-  function renderSVG() {
-    const gp2 = [...(navigator.getGamepads?.() || [])].find(Boolean)
-    return `<svg width="560" height="300" style="overflow:visible">
-      <!-- Corpo do controle -->
-      <ellipse cx="280" cy="170" rx="200" ry="110" fill="#1a1a2e" stroke="#333" stroke-width="2"/>
-      <ellipse cx="180" cy="190" rx="60" ry="60" fill="#111" stroke="#333"/>
-      <ellipse cx="350" cy="210" rx="45" ry="45" fill="#111" stroke="#333"/>
-      <!-- Gatilhos -->
-      <path d="M100,60 Q80,30 110,20 L180,30 Q160,50 140,60Z" fill="#222" stroke="#444"/>
-      <path d="M460,60 Q480,30 450,20 L380,30 Q400,50 420,60Z" fill="#222" stroke="#444"/>
-      ${BUTTONS.map(b => {
-        const pressed = gp2?.buttons[b.id]?.pressed
-        const col = pressed ? (b.color||'#fff') : '#555'
-        const bg = pressed ? 'rgba(255,255,255,0.15)' : 'transparent'
-        return `<g style="cursor:pointer" onclick="startListen(${b.id})">
-          <circle cx="${b.pos[0]}" cy="${b.pos[1]}" r="16" fill="${bg}" stroke="${col}" stroke-width="${listening===b.id?3:1.5}"/>
-          <text x="${b.pos[0]}" y="${b.pos[1]+5}" text-anchor="middle" fill="${col}" font-size="11" font-weight="700">${b.label}</text>
-        </g>`
-      }).join('')}
-      <!-- Analógicos -->
-      <circle cx="130" cy="190" r="28" fill="#333" stroke="#555"/>
-      ${gp2 ? `<circle cx="${130+(gp2.axes[0]||0)*20}" cy="${190+(gp2.axes[1]||0)*20}" r="10" fill="#66c0f4"/>` : '<circle cx="130" cy="190" r="10" fill="#444"/>'}
-      <circle cx="350" cy="210" r="22" fill="#333" stroke="#555"/>
-      ${gp2 ? `<circle cx="${350+(gp2.axes[2]||0)*16}" cy="${210+(gp2.axes[3]||0)*16}" r="8" fill="#66c0f4"/>` : '<circle cx="350" cy="210" r="8" fill="#444"/>'}
-    </svg>`
-  }
-
-  function render() {
-    const content = overlay.querySelector('#mappingContent')
-    if (!content) return
-    content.querySelector('#controllerSVG').innerHTML = renderSVG()
-    if (listening !== null) {
-      content.querySelector('#listenMsg').textContent = `Pressione o botão para mapear como "${BUTTONS.find(b=>b.id===listening)?.label}"...`
-    } else {
-      content.querySelector('#listenMsg').textContent = 'Clique em um botão para remapear'
+  function startListen(btnIdx) {
+    listening = btnIdx
+    renderOverlay()
+    // Aguarda input do gamepad
+    const waitInput = () => {
+      if (listening === null) return
+      const gp = getGP()
+      if (gp) {
+        for (let i = 0; i < gp.buttons.length; i++) {
+          if (gp.buttons[i].pressed && i !== btnIdx) {
+            bindings[btnIdx] = i
+            listening = null
+            localStorage.setItem('rc_bindings', JSON.stringify(bindings))
+            renderOverlay()
+            return
+          }
+        }
+      }
+      pollId = requestAnimationFrame(waitInput)
     }
+    pollId = requestAnimationFrame(waitInput)
   }
 
-  overlay.innerHTML = `<div id="mappingContent" style="text-align:center;color:#fff;max-width:600px;width:100%;padding:20px">
-    <div style="font-family:Rajdhani,sans-serif;font-size:24px;font-weight:700;margin-bottom:8px;color:#66c0f4">🎮 Mapeamento de Controle</div>
-    <div id="listenMsg" style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:16px">Clique em um botão para remapear</div>
-    <div id="controllerSVG">${renderSVG()}</div>
-    <div style="margin-top:16px;display:flex;gap:12px;justify-content:center">
-      <button onclick="document.getElementById('mappingOverlay').remove();cancelAnimationFrame(window._mapAnimId)"
-        style="background:#333;color:#fff;border:1px solid #555;border-radius:8px;padding:8px 24px;cursor:pointer">Fechar</button>
-      <button onclick="if(window.EJS_emulator?.openGamepadConfig)window.EJS_emulator.openGamepadConfig();else alert('Use as configurações do EmulatorJS para mapeamento avançado')"
-        style="background:#66c0f4;color:#000;border:none;border-radius:8px;padding:8px 24px;font-weight:700;cursor:pointer">Config EmulatorJS</button>
-    </div>
-  </div>`
+  function cancelListen() {
+    listening = null
+    cancelAnimationFrame(pollId)
+    renderOverlay()
+  }
 
+  function renderOverlay() {
+    const gp = getGP()
+    const axes = gp ? gp.axes : [0,0,0,0]
+
+    // Gera SVG do controle
+    const btnsSVG = BTN_DEFS.map(b => {
+      const pressed = gp?.buttons[bindings[b.idx] ?? b.idx]?.pressed
+      const isListening = listening === b.idx
+      const col = b.color || (isListening ? '#66c0f4' : (pressed ? '#fff' : '#666'))
+      const fill = isListening ? 'rgba(102,192,244,0.25)' : (pressed ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.04)')
+      const stroke = isListening ? '#66c0f4' : col
+      const sw = isListening ? 2.5 : 1.5
+      const mapped = bindings[b.idx] !== undefined ? '→'+bindings[b.idx] : ''
+      return `<g class="map-btn" data-idx="${b.idx}" style="cursor:pointer">
+        <circle cx="${b.x}" cy="${b.y}" r="${b.r}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+        <text x="${b.x}" y="${b.y+4}" text-anchor="middle" fill="${col}" font-size="${b.r > 18 ? 10 : 9}" font-weight="700">${b.label}${mapped ? '' : ''}</text>
+        ${mapped ? `<text x="${b.x}" y="${b.y+b.r+9}" text-anchor="middle" fill="#66c0f4" font-size="8">${mapped}</text>` : ''}
+      </g>`
+    }).join('')
+
+    // Analógicos
+    const lx = (axes[0]||0)*16, ly = (axes[1]||0)*16
+    const rx = (axes[2]||0)*14, ry = (axes[3]||0)*14
+    const sticksSVG = `
+      <circle cx="160" cy="210" r="24" fill="#1a1a2a" stroke="#333" stroke-width="1.5"/>
+      <circle cx="${160+lx}" cy="${210+ly}" r="12" fill="#444" stroke="#66c0f4" stroke-width="1.5"/>
+      <circle cx="330" cy="225" r="20" fill="#1a1a2a" stroke="#333" stroke-width="1.5"/>
+      <circle cx="${330+rx}" cy="${225+ry}" r="10" fill="#444" stroke="#66c0f4" stroke-width="1.5"/>`
+
+    // Gatilhos com preenchimento
+    const lt = gp?.buttons[6]?.value || 0
+    const rt = gp?.buttons[7]?.value || 0
+    const triggersSVG = `
+      <path d="M60,45 Q50,15 85,10 L155,18 Q135,38 118,48Z" fill="rgba(102,192,244,${lt*0.5+0.05})" stroke="#333" stroke-width="1.5"/>
+      <text x="108" y="35" text-anchor="middle" fill="${lt>0.1?'#66c0f4':'#555'}" font-size="9" font-weight="700">LT</text>
+      <path d="M480,45 Q490,15 455,10 L385,18 Q405,38 422,48Z" fill="rgba(102,192,244,${rt*0.5+0.05})" stroke="#333" stroke-width="1.5"/>
+      <text x="432" y="35" text-anchor="middle" fill="${rt>0.1?'#66c0f4':'#555'}" font-size="9" font-weight="700">RT</text>`
+
+    const svgStr = `<svg width="540" height="300" viewBox="0 0 540 300" style="max-width:100%">
+      <!-- Corpo do controle -->
+      <path d="M105,90 Q70,75 50,110 Q20,160 45,220 Q60,260 90,265 Q120,270 145,240 Q165,215 185,200 L270,195 L355,200 Q375,215 395,240 Q420,270 450,265 Q480,260 495,220 Q520,160 490,110 Q470,75 435,90 L380,80 Q320,60 270,60 Q220,60 160,80 Z" fill="#1a1a2e" stroke="#2a2a4e" stroke-width="2"/>
+      ${triggersSVG}
+      ${sticksSVG}
+      ${btnsSVG}
+    </svg>`
+
+    const listening_hint = listening !== null
+      ? `<div style="color:#66c0f4;font-size:14px;font-weight:600;animation:pulse 0.8s ease infinite">Pressione o botão no controle...</div>
+         <button onclick="cancelListen()" style="background:#333;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:12px">Cancelar</button>`
+      : `<div style="color:rgba(255,255,255,0.4);font-size:12px">Clique em um botão para remapear · Botões azuis = remapeados</div>`
+
+    overlay.innerHTML = `
+      <style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}</style>
+      <div style="text-align:center;color:#fff;width:100%;max-width:600px;padding:16px">
+        <div style="font-family:Rajdhani,sans-serif;font-size:22px;font-weight:700;color:#66c0f4;margin-bottom:4px">🎮 Mapeamento de Controle</div>
+        <div style="margin:8px 0 12px">${listening_hint}</div>
+        <div id="controllerSVG" style="display:flex;justify-content:center">${svgStr}</div>
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:14px">
+          <button id="resetBindings" style="background:#333;color:#aaa;border:1px solid #444;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:12px">↩ Resetar</button>
+          <button id="closeMapping" style="background:#444;color:#fff;border:1px solid #555;border-radius:8px;padding:8px 24px;cursor:pointer;font-size:13px;font-weight:600">Fechar</button>
+        </div>
+      </div>`
+
+    // Eventos dos botões SVG
+    overlay.querySelectorAll('.map-btn').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = +el.dataset.idx
+        if (listening === idx) cancelListen()
+        else startListen(idx)
+      })
+    })
+    overlay.querySelector('#closeMapping').addEventListener('click', () => {
+      cancelAnimationFrame(pollId)
+      cancelAnimationFrame(window._mapAnimId)
+      overlay.remove()
+    })
+    overlay.querySelector('#resetBindings').addEventListener('click', () => {
+      bindings = {}
+      localStorage.removeItem('rc_bindings')
+      renderOverlay()
+    })
+  }
+
+  renderOverlay()
   document.getElementById('playerWrap').appendChild(overlay)
 
-  // Poll para mostrar estado dos botões em tempo real
-  window._mapAnimId = requestAnimationFrame(function loop() {
+  // Poll para atualizar analógicos em tempo real
+  ;(function loop() {
     if (!document.getElementById('mappingOverlay')) return
-    render()
+    if (listening === null) renderOverlay()
     window._mapAnimId = requestAnimationFrame(loop)
-  })
+  })()
 }
+
 
 function closeMenu() { overlay.classList.add('hidden') }
 
