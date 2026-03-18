@@ -8,6 +8,6 @@ scp -r ".\backend"            "${RPI}:${DEST}/"
 scp    ".\nginx\nginx.conf"   "${RPI}:${DEST}/nginx/"
 scp    ".\docker-compose.yml" "${RPI}:${DEST}/"
 
-ssh $RPI "cd $DEST && docker compose down && docker compose up -d --build"
+ssh $RPI "cd $DEST && chmod -R 755 frontend2 && docker compose down && docker compose up -d --build"
 
 Write-Host "`n[RetroCloud] Pronto! http://192.168.0.233" -ForegroundColor Green
