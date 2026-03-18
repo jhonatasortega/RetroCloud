@@ -184,3 +184,4 @@ def get_current_user():
         return jsonify({'message': 'Usuário não encontrado'}), 404
     
     return jsonify({'user': user.to_dict()}), 200
+

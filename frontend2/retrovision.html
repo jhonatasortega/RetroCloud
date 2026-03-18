@@ -80,19 +80,19 @@ const tvMode = isTVMode()
 const isBack = new URLSearchParams(location.search).get('back') === '1'
 
 const SYS_META = {
-  snes:      { label:'Super Nintendo',  color:'#7c3aed', glow:'#a855f7', emoji:'🎮' },
-  n64:       { label:'Nintendo 64',     color:'#dc2626', glow:'#ef4444', emoji:'🕹' },
-  ps1:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', emoji:'🎯' },
-  psx:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', emoji:'🎯' },
-  megadrive: { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', emoji:'⚡' },
-  genesis:   { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', emoji:'⚡' },
-  md:        { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', emoji:'⚡' },
-  gba:       { label:'Game Boy Advance',color:'#b45309', glow:'#f59e0b', emoji:'🌟' },
-  gbc:       { label:'Game Boy Color',  color:'#15803d', glow:'#22c55e', emoji:'🎨' },
-  gb:        { label:'Game Boy',        color:'#374151', glow:'#9ca3af', emoji:'📱' },
-  nes:       { label:'NES',             color:'#9f1239', glow:'#f43f5e', emoji:'🔴' },
+  snes:      { label:'Super Nintendo',  color:'#7c3aed', glow:'#a855f7', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Super_Nintendo_logo.svg/120px-Super_Nintendo_logo.svg.png' },
+  n64:       { label:'Nintendo 64',     color:'#dc2626', glow:'#ef4444', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Nintendo_64_Logo.svg/120px-Nintendo_64_Logo.svg.png' },
+  ps1:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Playstation_logo_colour.svg/120px-Playstation_logo_colour.svg.png' },
+  psx:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Playstation_logo_colour.svg/120px-Playstation_logo_colour.svg.png' },
+  megadrive: { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Sega_logo.svg/120px-Sega_logo.svg.png' },
+  genesis:   { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Sega_logo.svg/120px-Sega_logo.svg.png' },
+  md:        { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Sega_logo.svg/120px-Sega_logo.svg.png' },
+  gba:       { label:'Game Boy Advance',color:'#b45309', glow:'#f59e0b', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Gba-logo.svg/120px-Gba-logo.svg.png' },
+  gbc:       { label:'Game Boy Color',  color:'#15803d', glow:'#22c55e', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Gba-logo.svg/120px-Gba-logo.svg.png' },
+  gb:        { label:'Game Boy',        color:'#374151', glow:'#9ca3af', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Gba-logo.svg/120px-Gba-logo.svg.png' },
+  nes:       { label:'NES',             color:'#9f1239', glow:'#f43f5e', img:'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/NES_logo.svg/120px-NES_logo.svg.png' },
 }
-const DEF_META = { label:'Outros', color:'#4b5563', glow:'#9ca3af', emoji:'🎮' }
+const DEF_META = { label:'Outros', color:'#4b5563', glow:'#9ca3af', img:null }
 
 let allGames = [], systems = [], sysIdx = 0, gameIdx = 0
 let menuOpen = false, confirmOpen = false, confirmSel = 0
@@ -109,6 +109,8 @@ const intro = document.getElementById('rvIntro')
 const app   = document.getElementById('retrovision')
 
 if (isBack) {
+  // Limpa ?back=1 da URL sem reload
+  history.replaceState({}, '', '/retrovision.html')
   intro.style.display = 'none'
   app.classList.remove('hidden')
   init()
@@ -155,7 +157,9 @@ function renderSystems() {
     const active = i === sysIdx
     return `<button class="rv-sys-btn${active?' active':''}" data-idx="${i}"
       style="color:${active ? m.glow : 'rgba(255,255,255,0.4)'}">
-      <span class="rv-sys-emoji">${m.emoji}</span>
+      ${m.img
+        ? `<img src="${m.img}" style="height:${active?28:20}px;width:auto;object-fit:contain;filter:${active?'brightness(1.2)':'brightness(0.5)'};transition:all 0.2s" onerror="this.style.display='none'">`
+        : `<span class="rv-sys-emoji">🎮</span>`}
       <span class="rv-sys-label">${m.label}</span>
     </button>`
   }).join('')

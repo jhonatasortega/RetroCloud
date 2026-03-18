@@ -221,8 +221,8 @@ document.getElementById('fsBtns').addEventListener('mousemove', showFsBtns)
 document.getElementById('fsBtns').addEventListener('touchstart', showFsBtns)
 document.getElementById('playerWrap').addEventListener('mousemove', () => { if (isFs) showFsBtns() })
 
-// Entra em fullscreen se veio do RetroVision
-if (fromRV) setTimeout(toggleFs, 800)
+// Entra em fullscreen automaticamente sempre
+setTimeout(toggleFs, 800)
 
 // Menu
 const MENU_ITEMS = [
