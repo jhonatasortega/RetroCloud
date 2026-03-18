@@ -1,64 +1,32 @@
+version: '3.8'
+
 services:
-
   backend:
+    build: ./backend
     container_name: retrocloud_backend
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "5000:5000"
-    volumes:
-      - ./backend:/app
-      - ./emulatorjs:/emulatorjs
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=${DATABASE_URL:-sqlite:///database.db}
-      - SECRET_KEY=${SECRET_KEY}
-      - FLASK_ENV=${FLASK_ENV:-production}
-      - THEGAMESDB_API_KEY=${THEGAMESDB_API_KEY:-}
-      - SCREENSCRAPER_USER=${SCREENSCRAPER_USER:-}
-      - SCREENSCRAPER_PASS=${SCREENSCRAPER_PASS:-}
-      - EMULATION_MODE=${EMULATION_MODE:-local}
-    networks:
-      - retrocloud_network
     restart: unless-stopped
-
-  frontend:
-    container_name: retrocloud_frontend
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    env_file: .env
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    env_file:
-      - .env
-    environment:
-      - VITE_API_URL=/api
-      - VITE_EMULATION_MODE=${EMULATION_MODE:-local}
-    depends_on:
-      - backend
+      - ./backend/static:/app/static
+      - ./backend/database.db:/app/database.db
     networks:
-      - retrocloud_network
-    restart: unless-stopped
+      - retrocloud
 
   nginx:
-    container_name: retrocloud_nginx
     image: nginx:alpine
+    container_name: retrocloud_nginx
+    restart: unless-stopped
     ports:
       - "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./emulatorjs/roms:/roms:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend2:/var/www/frontend:ro
+      - ./emulatorjs/roms:/emulatorjs/roms:ro
     depends_on:
       - backend
-      - frontend
     networks:
-      - retrocloud_network
-    restart: unless-stopped
+      - retrocloud
 
 networks:
-  retrocloud_network:
+  retrocloud:
     driver: bridge
-

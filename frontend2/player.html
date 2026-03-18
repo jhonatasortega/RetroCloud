@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RetroCloud — Jogando</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body style="margin:0;background:#000;display:flex;flex-direction:column;min-height:100vh">
+
+<div class="player-bar" id="playerBar">
+  <div class="player-info">
+    <button class="btn btn-secondary btn-sm" id="backBtn">← Voltar</button>
+    <div>
+      <div class="player-title" id="gameTitle">Carregando...</div>
+      <div class="player-sys" id="gameSys"></div>
+    </div>
+  </div>
+  <div class="player-actions">
+    <button class="btn btn-secondary btn-sm" id="menuBtn">☰ Menu</button>
+    <button class="btn btn-secondary btn-sm" id="fsBtn">⊞</button>
+  </div>
+</div>
+
+<div id="playerWrap" style="flex:1;position:relative;background:#000">
+  <div id="emulator-container" style="width:100%;height:calc(100vh - 48px);min-height:400px;display:block;background:#000"></div>
+
+  <!-- Botões fullscreen -->
+  <div class="fs-btns" id="fsBtns">
+    <button class="fs-btn" id="fsMenuBtn">☰</button>
+    <button class="fs-btn" id="fsExitBtn">✕</button>
+  </div>
+
+  <!-- Menu do jogo -->
+  <div class="game-menu-overlay hidden" id="gameMenuOverlay">
+    <div class="game-menu">
+      <div class="game-menu-header">
+        <span>🎮</span>
+        <span class="title" id="menuGameTitle">—</span>
+      </div>
+      <div id="gameMenuItems"></div>
+      <div class="game-menu-hint">↑↓ · A confirmar · B / Guide fechar</div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { api } from '/js/api.js'
+import { requireAuth } from '/js/auth.js'
+import { startGamepad, onGamepad, BTN } from '/js/gamepad.js'
+
+await requireAuth()
+
+const params  = new URLSearchParams(location.search)
+const id      = params.get('id')
+const fromRV  = sessionStorage.getItem('rc_from_rv') === '1'
+
+if (!id) { location.href = '/library.html'; throw 0 }
+
+// Volta
+const goBack = () => {
+  try { window.EJS_emulator?.pause?.() } catch {}
+  sessionStorage.removeItem('rc_from_rv')
+  location.href = fromRV ? '/retrovision.html?back=1' : '/library.html'
+}
+document.getElementById('backBtn').addEventListener('click', goBack)
+
+// Carrega dados
+let game, playInfo
+try {
+  ;[{ game }, playInfo] = await Promise.all([api.game(id), api.play(id)])
+} catch(e) {
+  document.getElementById('gameTitle').textContent = 'Erro ao carregar'
+  throw e
+}
+
+document.title = `RetroCloud — ${game.nome}`
+document.getElementById('gameTitle').textContent  = game.nome
+document.getElementById('gameSys').textContent    = game.sistema?.toUpperCase() || ''
+document.getElementById('menuGameTitle').textContent = game.nome
+
+// EmulatorJS
+const CORES = {
+  ps1:'psx', psx:'psx', snes:'snes', n64:'n64',
+  gba:'gba', gbc:'gbc', gb:'gb',
+  megadrive:'segaMD', genesis:'segaMD', md:'segaMD', nes:'nes',
+}
+
+let ejsLoaded = false
+function initEJS() {
+  if (ejsLoaded) return
+  const sys  = game.sistema?.toLowerCase()
+  const core = CORES[sys] || sys
+  const rom  = playInfo.emulator_url
+    ? `/roms/${sys}/${playInfo.emulator_url.split('/').pop()}` : ''
+
+  // Limpa instância anterior
+  document.getElementById('emulatorjs-script')?.remove()
+  document.getElementById('ejs-style')?.remove()
+  try { window.EJS_emulator?.pause?.() } catch {}
+  Object.keys(window).filter(k => k.startsWith('EJS_')).forEach(k => { try { delete window[k] } catch {} })
+
+  // Verifica container
+  const el = document.getElementById('emulator-container')
+  if (!el || el.offsetWidth === 0) { setTimeout(initEJS, 100); return }
+
+  ejsLoaded = true
+
+  window.EJS_player          = '#emulator-container'
+  window.EJS_core            = core
+  window.EJS_gameUrl         = rom
+  window.EJS_pathtodata      = 'https://cdn.emulatorjs.org/stable/data/'
+  window.EJS_startOnLoaded   = true
+  window.EJS_color           = '#66c0f4'
+  window.EJS_backgroundColor = '#000000'
+  window.EJS_language        = 'en-US'
+  window.EJS_Buttons = {
+    playPause:false, restart:false, mute:false, settings:false,
+    fullscreen:false, saveState:false, loadState:false,
+    screenRecord:false, gamepad:false, cheat:false,
+    volume:false, saveSavFiles:true, contextMenu:false,
+  }
+
+  const st = document.createElement('style')
+  st.id = 'ejs-style'
+  st.textContent = `
+    #emulator-container .ejs_menu_bar,
+    #emulator-container .ejs_volume_bar,
+    #emulator-container .ejs_ctx_menu { display:none!important; }
+    #emulator-container canvas { display:block!important; }
+  `
+  document.head.appendChild(st)
+
+  const script = document.createElement('script')
+  script.id  = 'emulatorjs-script'
+  script.src = `https://cdn.emulatorjs.org/stable/data/loader.js?v=${Date.now()}`
+  script.onload = () => setTimeout(() => window.dispatchEvent(new Event('resize')), 500)
+  document.body.appendChild(script)
+}
+
+setTimeout(initEJS, 200)
+
+// Fullscreen
+let isFs = false
+const bar    = document.getElementById('playerBar')
+const fsBtns = document.getElementById('fsBtns')
+let fsTimer
+
+function showFsBtns() {
+  fsBtns.classList.add('visible')
+  clearTimeout(fsTimer)
+  fsTimer = setTimeout(() => fsBtns.classList.remove('visible'), 3000)
+}
+
+function toggleFs() {
+  if (!document.fullscreenElement) {
+    document.getElementById('playerWrap').requestFullscreen?.().catch(() => {})
+  } else {
+    document.exitFullscreen?.()
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  isFs = !!document.fullscreenElement
+  bar.style.display = isFs ? 'none' : ''
+  document.getElementById('emulator-container').style.height = isFs ? '100vh' : 'calc(100vh - 48px)'
+  if (isFs) showFsBtns()
+})
+document.getElementById('fsBtn').addEventListener('click', toggleFs)
+document.getElementById('fsBtns').addEventListener('mousemove', showFsBtns)
+document.getElementById('fsBtns').addEventListener('touchstart', showFsBtns)
+document.getElementById('playerWrap').addEventListener('mousemove', () => { if (isFs) showFsBtns() })
+
+// Entra em fullscreen se veio do RetroVision
+if (fromRV) setTimeout(toggleFs, 800)
+
+// Menu
+const MENU_ITEMS = [
+  { icon:'▶', label:'Continuar',       action: closeMenu },
+  { icon:'⊞', label:'Tela cheia',      action: toggleFs },
+  { icon:'💾', label:'Salvar estado',   action: () => { window.EJS_emulator?.saveState?.(); closeMenu() } },
+  { icon:'📂', label:'Carregar estado', action: () => { window.EJS_emulator?.loadState?.(); closeMenu() } },
+  { icon:'🔄', label:'Reiniciar',       action: () => { window.EJS_emulator?.restart?.(); closeMenu() } },
+  { icon:'←',  label:'Sair do jogo',   action: goBack },
+]
+
+let selectedItem = 0
+const overlay = document.getElementById('gameMenuOverlay')
+const itemsEl = document.getElementById('gameMenuItems')
+
+itemsEl.innerHTML = MENU_ITEMS.map((item, i) =>
+  `<button class="game-menu-item${i===0?' selected':''}" data-idx="${i}">
+    <span>${item.icon}</span><span>${item.label}</span>
+  </button>`
+).join('')
+
+itemsEl.addEventListener('click', e => {
+  const btn = e.target.closest('.game-menu-item')
+  if (btn) { MENU_ITEMS[+btn.dataset.idx]?.action() }
+})
+itemsEl.addEventListener('mouseover', e => {
+  const btn = e.target.closest('.game-menu-item')
+  if (btn) selectMenuItem(+btn.dataset.idx)
+})
+
+function selectMenuItem(i) {
+  selectedItem = i
+  itemsEl.querySelectorAll('.game-menu-item').forEach((b, idx) => {
+    b.classList.toggle('selected', idx === i)
+  })
+}
+
+function openMenu()  { overlay.classList.remove('hidden'); selectMenuItem(0) }
+function closeMenu() { overlay.classList.add('hidden') }
+
+document.getElementById('menuBtn').addEventListener('click', openMenu)
+document.getElementById('fsMenuBtn').addEventListener('click', openMenu)
+document.getElementById('fsExitBtn').addEventListener('click', toggleFs)
+
+document.addEventListener('keydown', e => {
+  if (!overlay.classList.contains('hidden')) {
+    if (e.key === 'ArrowUp')    selectMenuItem(Math.max(0, selectedItem-1))
+    if (e.key === 'ArrowDown')  selectMenuItem(Math.min(MENU_ITEMS.length-1, selectedItem+1))
+    if (e.key === 'Enter')      MENU_ITEMS[selectedItem]?.action()
+    if (e.key === 'Escape')     closeMenu()
+  }
+})
+
+// Gamepad
+startGamepad()
+onGamepad((btn, type) => {
+  if (type !== 'press') return
+
+  if (!overlay.classList.contains('hidden')) {
+    // Menu aberto
+    if (btn === BTN.UP)    selectMenuItem(Math.max(0, selectedItem-1))
+    if (btn === BTN.DOWN)  selectMenuItem(Math.min(MENU_ITEMS.length-1, selectedItem+1))
+    if (btn === BTN.A)     MENU_ITEMS[selectedItem]?.action()
+    if (btn === BTN.B || btn === BTN.GUIDE) closeMenu()
+  } else {
+    // Jogo rodando — só Guide abre menu
+    if (btn === BTN.GUIDE) openMenu()
+  }
+})
+</script>
+</body>
+</html>

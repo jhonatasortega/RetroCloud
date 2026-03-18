@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RetroCloud — Admin</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/library.html">RetroCloud</a>
+  <div class="navbar-nav">
+    <a class="nav-link" href="/library.html">Biblioteca</a>
+    <a class="nav-link active" href="/admin.html">Admin</a>
+    <button class="btn btn-secondary btn-sm" id="logoutBtn">Sair</button>
+  </div>
+</nav>
+
+<div class="admin-layout">
+  <div class="admin-sidebar">
+    <button class="admin-nav-item active" data-tab="roms">🎮 ROMs</button>
+    <button class="admin-nav-item" data-tab="users">👥 Usuários</button>
+    <button class="admin-nav-item" data-tab="config">⚙️ Config</button>
+  </div>
+  <div class="admin-content" id="adminContent">
+    <div class="text-muted">Carregando...</div>
+  </div>
+</div>
+
+<script type="module">
+import { api } from '/js/api.js'
+import { requireAdmin, logout } from '/js/auth.js'
+import { toastOk, toastErr } from '/js/ui.js'
+
+await requireAdmin()
+document.getElementById('logoutBtn').addEventListener('click', logout)
+
+// Tabs
+let activeTab = 'roms'
+document.querySelectorAll('.admin-nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.admin-nav-item').forEach(b => b.classList.remove('active'))
+    btn.classList.add('active')
+    activeTab = btn.dataset.tab
+    loadTab(activeTab)
+  })
+})
+
+loadTab('roms')
+
+async function loadTab(tab) {
+  const el = document.getElementById('adminContent')
+  el.innerHTML = '<div class="text-muted">Carregando...</div>'
+  if (tab === 'roms')   await renderRoms(el)
+  if (tab === 'users')  await renderUsers(el)
+  if (tab === 'config') await renderConfig(el)
+}
+
+// ── ROMs ──
+async function renderRoms(el) {
+  const data = await api.games().catch(() => ({ games: [] }))
+  const games = data.games || []
+
+  // Filtro de sistema
+  const systems = [...new Set(games.map(g => g.sistema?.toLowerCase()).filter(Boolean))]
+  let activeSys = '', searchQ = ''
+
+  function filtered() {
+    return games.filter(g => {
+      const ms = !activeSys || g.sistema?.toLowerCase() === activeSys
+      const mq = !searchQ   || g.nome?.toLowerCase().includes(searchQ.toLowerCase())
+      return ms && mq
+    })
+  }
+
+  function renderTable() {
+    const list = filtered()
+    tableBody.innerHTML = list.map(g => `
+      <tr>
+        <td>${esc(g.nome)}</td>
+        <td><span class="sys-badge sys-${g.sistema?.toLowerCase()}" style="position:static;font-size:11px;padding:2px 8px">${esc(g.sistema?.toUpperCase())}</span></td>
+        <td>${g.thumb ? `<img src="${g.thumb}" class="thumb-preview" loading="lazy">` : '—'}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm fetch-btn" data-id="${g.id}">🔍 Buscar capa</button>
+          <button class="btn btn-danger btn-sm del-btn" data-id="${g.id}">Deletar</button>
+        </td>
+      </tr>
+    `).join('')
+
+    tableBody.querySelectorAll('.fetch-btn').forEach(b => {
+      b.addEventListener('click', async () => {
+        b.disabled = true; b.textContent = '...'
+        try {
+          await api.fetchThumb(b.dataset.id)
+          toastOk('Capa buscada! Recarregue para ver.')
+        } catch(e) { toastErr(e.message) }
+        b.disabled = false; b.textContent = '🔍 Buscar capa'
+      })
+    })
+
+    tableBody.querySelectorAll('.del-btn').forEach(b => {
+      b.addEventListener('click', async () => {
+        if (!confirm('Deletar esta ROM?')) return
+        try {
+          await api.deleteRom(b.dataset.id)
+          toastOk('ROM deletada')
+          loadTab('roms')
+        } catch(e) { toastErr(e.message) }
+      })
+    })
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 class="font-head" style="font-size:22px">ROMs <span class="text-muted text-sm">(${games.length})</span></h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" id="fetchAllBtn">🔍 Buscar todas as capas</button>
+        <button class="btn btn-primary btn-sm" id="uploadBtn">+ Upload ROM</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <input class="input" id="romSearch" placeholder="Buscar..." style="max-width:260px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="romSysFilter">
+        <button class="sys-btn active" data-sys="">Todos</button>
+        ${systems.map(s => `<button class="sys-btn" data-sys="${s}">${s.toUpperCase()}</button>`).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <table class="admin-table">
+        <thead><tr><th>Nome</th><th>Sistema</th><th>Capa</th><th>Ações</th></tr></thead>
+        <tbody id="romsBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Upload modal hidden -->
+    <div id="uploadModal" style="display:none">
+      <div class="modal-overlay" id="uploadOverlay">
+        <div class="modal">
+          <div class="modal-header">
+            <span class="modal-title">Upload de ROM</span>
+            <button class="modal-close" id="closeUpload">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group mb-3">
+              <label class="form-label">Sistema</label>
+              <select class="input" id="uploadSys">
+                <option value="snes">SNES</option>
+                <option value="n64">N64</option>
+                <option value="ps1">PS1</option>
+                <option value="gba">GBA</option>
+                <option value="megadrive">Mega Drive</option>
+                <option value="nes">NES</option>
+                <option value="gbc">GBC</option>
+                <option value="gb">GB</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Arquivo(s) ROM</label>
+              <input type="file" class="input" id="uploadFile" multiple>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="cancelUpload">Cancelar</button>
+            <button class="btn btn-primary" id="doUpload">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+
+  const tableBody = el.querySelector('#romsBody')
+  renderTable()
+
+  // Busca
+  el.querySelector('#romSearch').addEventListener('input', e => {
+    searchQ = e.target.value; renderTable()
+  })
+  el.querySelector('#romSysFilter').addEventListener('click', e => {
+    const b = e.target.closest('.sys-btn')
+    if (!b) return
+    el.querySelectorAll('.sys-btn').forEach(x => x.classList.remove('active'))
+    b.classList.add('active')
+    activeSys = b.dataset.sys
+    renderTable()
+  })
+
+  // Fetch all
+  el.querySelector('#fetchAllBtn').addEventListener('click', async () => {
+    if (!confirm('Buscar capas para todas as ROMs sem capa? Pode demorar.')) return
+    try {
+      const r = await api.fetchThumb('roms/fetch-all').catch(() => api.games())
+      toastOk('Busca iniciada em background')
+    } catch(e) { toastErr(e.message) }
+  })
+
+  // Upload
+  const uploadModal = el.querySelector('#uploadModal')
+  el.querySelector('#uploadBtn').addEventListener('click', () => { uploadModal.style.display = '' })
+  el.querySelector('#closeUpload').addEventListener('click', () => { uploadModal.style.display = 'none' })
+  el.querySelector('#cancelUpload').addEventListener('click', () => { uploadModal.style.display = 'none' })
+  el.querySelector('#doUpload').addEventListener('click', async () => {
+    const files = el.querySelector('#uploadFile').files
+    const sys   = el.querySelector('#uploadSys').value
+    if (!files.length) return
+    const btn = el.querySelector('#doUpload')
+    btn.disabled = true; btn.textContent = 'Enviando...'
+    let ok = 0, fail = 0
+    for (const f of files) {
+      const fd = new FormData()
+      fd.append('rom', f); fd.append('sistema', sys)
+      try { await api.uploadRom(fd); ok++ }
+      catch { fail++ }
+    }
+    btn.disabled = false; btn.textContent = 'Enviar'
+    uploadModal.style.display = 'none'
+    if (ok) toastOk(`${ok} ROM(s) enviada(s)`)
+    if (fail) toastErr(`${fail} falha(s)`)
+    loadTab('roms')
+  })
+}
+
+// ── Usuários ──
+async function renderUsers(el) {
+  const data = await api.adminUsers().catch(() => ({ users: [] }))
+  const users = data.users || []
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 class="font-head" style="font-size:22px">Usuários <span class="text-muted text-sm">(${users.length}/5)</span></h2>
+      <button class="btn btn-primary btn-sm" id="newUserBtn">+ Novo usuário</button>
+    </div>
+    <div class="card">
+      <table class="admin-table">
+        <thead><tr><th>Nome</th><th>Email</th><th>Admin</th><th>Ações</th></tr></thead>
+        <tbody>${users.map(u => `
+          <tr>
+            <td>${esc(u.nome)}</td>
+            <td>${esc(u.email)}</td>
+            <td>${u.is_admin ? '✓' : '—'}</td>
+            <td>${!u.is_admin ? `<button class="btn btn-danger btn-sm del-user" data-id="${u.id}">Deletar</button>` : ''}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div id="newUserForm" style="display:none;margin-top:20px">
+      <div class="card">
+        <div class="card-header">Novo usuário</div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+          <input class="input" id="newNome"  placeholder="Nome">
+          <input class="input" id="newEmail" placeholder="Email" type="email">
+          <input class="input" id="newSenha" placeholder="Senha" type="password">
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" id="createUser">Criar</button>
+            <button class="btn btn-secondary" id="cancelUser">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+
+  el.querySelector('#newUserBtn').addEventListener('click', () => {
+    el.querySelector('#newUserForm').style.display = ''
+  })
+  el.querySelector('#cancelUser').addEventListener('click', () => {
+    el.querySelector('#newUserForm').style.display = 'none'
+  })
+  el.querySelector('#createUser').addEventListener('click', async () => {
+    const nome  = el.querySelector('#newNome').value.trim()
+    const email = el.querySelector('#newEmail').value.trim()
+    const senha = el.querySelector('#newSenha').value
+    if (!nome || !email || !senha) return toastErr('Preencha todos os campos')
+    try {
+      await api.adminCreateUser({ nome, email, senha })
+      toastOk('Usuário criado')
+      loadTab('users')
+    } catch(e) { toastErr(e.message) }
+  })
+
+  el.querySelectorAll('.del-user').forEach(b => {
+    b.addEventListener('click', async () => {
+      if (!confirm('Deletar usuário?')) return
+      try { await api.adminDeleteUser(b.dataset.id); toastOk('Deletado'); loadTab('users') }
+      catch(e) { toastErr(e.message) }
+    })
+  })
+}
+
+// ── Config ──
+async function renderConfig(el) {
+  el.innerHTML = `
+    <h2 class="font-head" style="font-size:22px;margin-bottom:20px">Configurações</h2>
+    <div class="card" style="max-width:480px">
+      <div class="card-header">Alterar senha</div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+        <input class="input" id="senhaAtual" type="password" placeholder="Senha atual">
+        <input class="input" id="senhaNova"  type="password" placeholder="Nova senha">
+        <button class="btn btn-primary" id="changePassBtn" style="align-self:flex-start">Alterar senha</button>
+      </div>
+    </div>
+    <div class="card" style="max-width:480px;margin-top:16px">
+      <div class="card-header">Sistema</div>
+      <div class="card-body">
+        <button class="btn btn-danger" id="shutdownBtn">⏻ Desligar servidor</button>
+      </div>
+    </div>
+  `
+
+  el.querySelector('#changePassBtn').addEventListener('click', async () => {
+    const atual = el.querySelector('#senhaAtual').value
+    const nova  = el.querySelector('#senhaNova').value
+    if (!atual || !nova) return toastErr('Preencha os campos')
+    try {
+      await api.changePass(atual, nova)
+      toastOk('Senha alterada')
+    } catch(e) { toastErr(e.message) }
+  })
+
+  el.querySelector('#shutdownBtn').addEventListener('click', async () => {
+    if (!confirm('Desligar o servidor?')) return
+    try { await api.shutdown() } catch {}
+  })
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+}
+</script>
+</body>
+</html>

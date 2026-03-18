@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RetroCloud — Login</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-box">
+    <div class="login-logo">
+      <h1>RetroCloud</h1>
+      <p>Sua biblioteca retro pessoal</p>
+    </div>
+    <form class="login-form" id="loginForm">
+      <div class="form-group">
+        <label class="form-label" for="email">Email</label>
+        <input class="input" type="email" id="email" placeholder="seu@email.com" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="senha">Senha</label>
+        <input class="input" type="password" id="senha" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <div id="loginError" class="text-danger text-sm hidden"></div>
+      <button class="btn btn-primary" type="submit" id="loginBtn" style="width:100%;justify-content:center;margin-top:4px">
+        Entrar
+      </button>
+      <p class="text-sm text-muted" style="text-align:center">
+        Problemas? <a href="mailto:suporte@retrocloud.online" class="text-accent">suporte@retrocloud.online</a>
+      </p>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+import { api, setToken } from '/js/api.js'
+
+// Redireciona se já logado
+const token = localStorage.getItem('rc_token')
+if (token) {
+  try {
+    await api.me()
+    window.location.href = '/library.html'
+  } catch { /* token inválido, continua */ }
+}
+
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault()
+  const btn = document.getElementById('loginBtn')
+  const err = document.getElementById('loginError')
+  const email = document.getElementById('email').value.trim()
+  const senha = document.getElementById('senha').value
+
+  btn.disabled = true
+  btn.textContent = 'Entrando...'
+  err.classList.add('hidden')
+
+  try {
+    const data = await api.login(email, senha)
+    setToken(data.token)
+    window.location.href = '/library.html'
+  } catch (e) {
+    err.textContent = e.message || 'Email ou senha incorretos'
+    err.classList.remove('hidden')
+    btn.disabled = false
+    btn.textContent = 'Entrar'
+  }
+})
+</script>
+</body>
+</html>

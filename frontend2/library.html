@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RetroCloud — Biblioteca</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/library.html">RetroCloud</a>
+  <div class="navbar-nav">
+    <a class="nav-link active" href="/library.html">Biblioteca</a>
+    <a class="nav-link" href="/admin.html" id="adminLink" style="display:none">Admin</a>
+    <span class="nav-badge" id="inputBadge">🖥 Desktop</span>
+    <button class="btn btn-secondary btn-sm" id="rvBtn" style="display:none">🎮 RetroVision</button>
+    <button class="btn btn-secondary btn-sm" id="logoutBtn">Sair</button>
+  </div>
+</nav>
+
+<div class="filters">
+  <div class="search-wrap">
+    <input class="input" type="search" id="searchInput" placeholder="Buscar jogos...">
+  </div>
+  <div class="sys-filters" id="sysFilters">
+    <button class="sys-btn active" data-sys="">Todos</button>
+  </div>
+</div>
+
+<div class="container">
+  <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+    <p class="text-muted text-sm" id="gameCount">Carregando...</p>
+  </div>
+  <div class="game-grid" id="gameGrid"></div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<script type="module">
+import { api } from '/js/api.js'
+import { requireAuth, logout } from '/js/auth.js'
+import { startGamepad, onGamepad, BTN, hasGamepad } from '/js/gamepad.js'
+import { toastErr } from '/js/ui.js'
+
+const PER_PAGE = 24
+let allGames = [], filtered = [], page = 1, activeSys = ''
+
+const user = await requireAuth()
+if (!user) throw new Error()
+
+// Admin link
+if (user.is_admin) document.getElementById('adminLink').style.display = ''
+
+// Logout
+document.getElementById('logoutBtn').addEventListener('click', logout)
+
+// Carrega sistemas
+const sysData = await api.systems().catch(() => ({ systems: [] }))
+const sysFilters = document.getElementById('sysFilters')
+;(sysData.systems || []).forEach(s => {
+  const btn = document.createElement('button')
+  btn.className = 'sys-btn'
+  btn.dataset.sys = s
+  btn.textContent = s.toUpperCase()
+  sysFilters.appendChild(btn)
+})
+
+sysFilters.addEventListener('click', e => {
+  const btn = e.target.closest('.sys-btn')
+  if (!btn) return
+  sysFilters.querySelectorAll('.sys-btn').forEach(b => b.classList.remove('active'))
+  btn.classList.add('active')
+  activeSys = btn.dataset.sys
+  page = 1
+  applyFilter()
+})
+
+// Busca
+let searchTimer
+document.getElementById('searchInput').addEventListener('input', e => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { page = 1; applyFilter() }, 250)
+})
+
+// Carrega jogos
+const gData = await api.games().catch(() => ({ games: [] }))
+allGames = gData.games || []
+applyFilter()
+
+function applyFilter() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim()
+  filtered = allGames.filter(g => {
+    const matchSys = !activeSys || g.sistema?.toLowerCase() === activeSys.toLowerCase()
+    const matchQ   = !q || g.nome?.toLowerCase().includes(q)
+    return matchSys && matchQ
+  })
+  render()
+}
+
+function render() {
+  const total = filtered.length
+  const totalPages = Math.ceil(total / PER_PAGE)
+  if (page > totalPages) page = Math.max(1, totalPages)
+  const slice = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
+
+  document.getElementById('gameCount').textContent =
+    `${total} jogo${total !== 1 ? 's' : ''}${activeSys ? ' · ' + activeSys.toUpperCase() : ''}`
+
+  const grid = document.getElementById('gameGrid')
+  if (!slice.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 0;color:var(--muted)">
+      <div style="font-size:48px;margin-bottom:12px">🕹</div>
+      <p>Nenhum jogo encontrado</p>
+    </div>`
+  } else {
+    grid.innerHTML = slice.map(g => gameCardHTML(g)).join('')
+    grid.querySelectorAll('.game-card').forEach(card => {
+      card.addEventListener('click', () => {
+        window.location.href = `/player.html?id=${card.dataset.id}`
+      })
+    })
+  }
+
+  // Paginação
+  const pag = document.getElementById('pagination')
+  if (totalPages <= 1) { pag.innerHTML = ''; return }
+  pag.innerHTML = `
+    <button class="btn btn-secondary btn-sm" ${page===1?'disabled':''} id="prevPage">← Anterior</button>
+    <span class="page-info">${page} / ${totalPages}</span>
+    <button class="btn btn-secondary btn-sm" ${page===totalPages?'disabled':''} id="nextPage">Próxima →</button>
+  `
+  pag.querySelector('#prevPage')?.addEventListener('click', () => { page--; render() })
+  pag.querySelector('#nextPage')?.addEventListener('click', () => { page++; render() })
+}
+
+const SYS_COLORS = {
+  snes:'sys-snes', n64:'sys-n64', ps1:'sys-ps1', psx:'sys-ps1',
+  gba:'sys-gba', gbc:'sys-gbc', gb:'sys-gb',
+  megadrive:'sys-megadrive', genesis:'sys-megadrive', md:'sys-megadrive', nes:'sys-nes',
+}
+
+function gameCardHTML(g) {
+  const sys = g.sistema?.toLowerCase() || ''
+  const color = SYS_COLORS[sys] || ''
+  const thumb = g.thumb
+    ? `<img src="${g.thumb}" alt="${esc(g.nome)}" loading="lazy" decoding="async"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+            style="width:100%;height:100%;object-fit:cover;display:block">
+       <div class="no-thumb" style="display:none"><span>🎮</span><span>${esc(g.nome)}</span></div>`
+    : `<div class="no-thumb"><span>🎮</span><span>${esc(g.nome)}</span></div>`
+
+  return `<div class="game-card" data-id="${g.id}">
+    <div class="game-card-thumb">
+      ${thumb}
+      <span class="sys-badge ${color}">${esc(g.sistema?.toUpperCase() || '')}</span>
+    </div>
+    <div class="game-card-info">
+      <div class="game-card-name">${esc(g.nome)}</div>
+    </div>
+  </div>`
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
+
+// Gamepad — detecta e mostra botão RetroVision
+const rvBtn = document.getElementById('rvBtn')
+const badge = document.getElementById('inputBadge')
+
+function updateInputMode() {
+  const gp = hasGamepad()
+  badge.textContent = gp ? '🕹 Controle' : '🖥 Desktop'
+  rvBtn.style.display = gp ? '' : 'none'
+}
+window.addEventListener('gamepadconnected',    updateInputMode)
+window.addEventListener('gamepaddisconnected', updateInputMode)
+updateInputMode()
+
+rvBtn.addEventListener('click', () => { window.location.href = '/retrovision.html' })
+
+// Gamepad navegação básica
+startGamepad()
+onGamepad((btn, type) => {
+  if (btn === BTN.A && type === 'press') {
+    const focused = document.activeElement?.closest('.game-card')
+    if (focused) window.location.href = `/player.html?id=${focused.dataset.id}`
+  }
+  if (btn === BTN.RB && type === 'press') { page++; render() }
+  if (btn === BTN.LB && type === 'press') { page = Math.max(1, page-1); render() }
+})
+</script>
+</body>
+</html>

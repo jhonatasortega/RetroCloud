@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RetroCloud — RetroVision</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body style="margin:0;overflow:hidden">
+
+<!-- Intro -->
+<div id="rvIntro" class="rv-intro">
+  <div class="rv-intro-content">
+    <div class="rv-intro-logo">🎮</div>
+    <div class="rv-intro-title">RetroCloud</div>
+    <div class="rv-intro-line"></div>
+    <div class="rv-intro-sub">RetroVision</div>
+  </div>
+</div>
+
+<div id="retrovision" class="hidden">
+  <!-- Fundo -->
+  <div class="rv-bg" id="rvBg"></div>
+
+  <!-- Sistemas -->
+  <div class="rv-systems" id="rvSystems"></div>
+
+  <!-- Carrossel -->
+  <div class="rv-carousel" id="rvCarousel">
+    <div class="rv-cards-wrap" id="rvCards"></div>
+  </div>
+
+  <!-- Info rodapé -->
+  <div class="rv-info" id="rvInfo">
+    <div class="rv-game-title" id="rvTitle">—</div>
+    <div class="rv-game-sub" id="rvSub"></div>
+    <button class="rv-play-btn" id="rvPlayBtn">▶ Jogar</button>
+    <div class="rv-hint" id="rvHint">◀▶ navegar · A jogar · Guide menu · B sair</div>
+  </div>
+
+  <!-- Menu Guide -->
+  <div class="rv-menu-overlay hidden" id="rvMenuOverlay">
+    <div class="rv-menu">
+      <div class="rv-menu-header"><div class="rv-menu-title">RetroVision</div></div>
+      <div id="rvMenuItems"></div>
+      <div class="rv-menu-hint">A confirmar · B fechar</div>
+    </div>
+  </div>
+
+  <!-- Confirmação saída (não-TV) -->
+  <div class="rv-confirm hidden" id="rvConfirm">
+    <div class="rv-confirm-box" id="rvConfirmBox">
+      <div class="rv-confirm-title">Sair do RetroVision?</div>
+      <div class="rv-confirm-sub">A confirmar · B / X cancelar</div>
+      <div class="rv-confirm-btns">
+        <button class="rv-play-btn" id="rvConfirmYes">Sair</button>
+        <button class="btn btn-secondary" id="rvConfirmNo">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { api } from '/js/api.js'
+import { requireAuth, logout } from '/js/auth.js'
+import { startGamepad, onGamepad, BTN, hasGamepad } from '/js/gamepad.js'
+
+const user = await requireAuth()
+if (!user) throw 0
+
+// Detecta TV: controle sem mouse fino
+const isTVMode = () => {
+  const gp = hasGamepad()
+  const noMouse = !window.matchMedia('(pointer: fine)').matches
+  return gp && noMouse
+}
+const tvMode = isTVMode()
+
+// Se veio de volta do jogo (?back=1), não mostra intro
+const isBack = new URLSearchParams(location.search).get('back') === '1'
+
+const SYS_META = {
+  snes:      { label:'Super Nintendo',  color:'#7c3aed', glow:'#a855f7', emoji:'🎮' },
+  n64:       { label:'Nintendo 64',     color:'#dc2626', glow:'#ef4444', emoji:'🕹' },
+  ps1:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', emoji:'🎯' },
+  psx:       { label:'PlayStation',     color:'#1d4ed8', glow:'#3b82f6', emoji:'🎯' },
+  megadrive: { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', emoji:'⚡' },
+  genesis:   { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', emoji:'⚡' },
+  md:        { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', emoji:'⚡' },
+  gba:       { label:'Game Boy Advance',color:'#b45309', glow:'#f59e0b', emoji:'🌟' },
+  gbc:       { label:'Game Boy Color',  color:'#15803d', glow:'#22c55e', emoji:'🎨' },
+  gb:        { label:'Game Boy',        color:'#374151', glow:'#9ca3af', emoji:'📱' },
+  nes:       { label:'NES',             color:'#9f1239', glow:'#f43f5e', emoji:'🔴' },
+}
+const DEF_META = { label:'Outros', color:'#4b5563', glow:'#9ca3af', emoji:'🎮' }
+
+let allGames = [], systems = [], sysIdx = 0, gameIdx = 0
+let menuOpen = false, confirmOpen = false, confirmSel = 0
+let menuSel = 0
+let navStart = 0
+
+// Carrega jogos
+const gData = await api.games().catch(() => ({ games: [] }))
+allGames = gData.games || []
+systems = [...new Set(allGames.map(g => g.sistema?.toLowerCase()).filter(Boolean))]
+
+// Mostra app
+const intro = document.getElementById('rvIntro')
+const app   = document.getElementById('retrovision')
+
+if (isBack) {
+  intro.style.display = 'none'
+  app.classList.remove('hidden')
+  init()
+} else {
+  setTimeout(() => {
+    intro.style.opacity = '0'
+    intro.style.transition = 'opacity 0.4s'
+    setTimeout(() => {
+      intro.style.display = 'none'
+      app.classList.remove('hidden')
+      init()
+    }, 400)
+  }, 1800)
+}
+
+function init() {
+  renderSystems()
+  renderCarousel()
+  renderInfo()
+  startGamepad()
+  setupGamepad()
+  setupMouse()
+  setupTouch()
+  setupKeyboard()
+}
+
+// Computed
+function getFiltered() {
+  return allGames.filter(g => g.sistema?.toLowerCase() === systems[sysIdx])
+}
+function getMeta() {
+  return SYS_META[systems[sysIdx]] || DEF_META
+}
+function getCurrentGame() {
+  const f = getFiltered()
+  return f[Math.min(gameIdx, f.length-1)]
+}
+
+// Sistemas
+function renderSystems() {
+  const el = document.getElementById('rvSystems')
+  el.innerHTML = systems.map((s, i) => {
+    const m = SYS_META[s] || DEF_META
+    const active = i === sysIdx
+    return `<button class="rv-sys-btn${active?' active':''}" data-idx="${i}"
+      style="color:${active ? m.glow : 'rgba(255,255,255,0.4)'}">
+      <span class="rv-sys-emoji">${m.emoji}</span>
+      <span class="rv-sys-label">${m.label}</span>
+    </button>`
+  }).join('')
+  el.querySelectorAll('.rv-sys-btn').forEach(b => {
+    b.addEventListener('click', () => { sysIdx = +b.dataset.idx; gameIdx = 0; update() })
+  })
+}
+
+// Carrossel
+const RANGE = 3
+function renderCarousel() {
+  const filtered = getFiltered()
+  const meta = getMeta()
+  const safe = Math.min(gameIdx, Math.max(0, filtered.length-1))
+  const wrap = document.getElementById('rvCards')
+
+  const cards = []
+  for (let i = safe-RANGE; i <= safe+RANGE; i++) {
+    if (i < 0 || i >= filtered.length) continue
+    const offset = i - safe
+    const g = filtered[i]
+    cards.push(cardHTML(g, offset, meta, offset === 0, i))
+  }
+  wrap.innerHTML = cards.join('')
+  wrap.querySelectorAll('.rv-card').forEach(c => {
+    c.addEventListener('click', () => {
+      const idx = +c.dataset.idx
+      if (idx === safe) launchGame()
+      else { gameIdx = idx; update() }
+    })
+  })
+}
+
+function cardHTML(g, offset, meta, center, idx) {
+  const abs = Math.abs(offset)
+  const w = center ? 200 : 155
+  const h = center ? 270 : 205
+  const scale = center ? 1 : Math.max(0.52, 1 - abs*0.18)
+  const tx = offset * 220
+  const tz = center ? 50 : -abs*80
+  const ry = offset * -12
+  const op = center ? 1 : Math.max(0.25, 1-abs*0.25)
+
+  const thumb = g.thumb
+    ? `<img src="${g.thumb}" alt="" loading="lazy" decoding="async"
+            onerror="this.style.display='none'"
+            style="width:100%;height:100%;object-fit:cover;display:block">`
+    : `<div class="rv-card-placeholder" style="background:linear-gradient(135deg,${meta.color}30,#000)">
+        <span>${meta.emoji}</span><span>${esc(g.nome)}</span></div>`
+
+  return `<div class="rv-card" data-idx="${idx}" style="
+    transform: translateX(${tx}px) translateZ(${tz}px) rotateY(${ry}deg) scale(${scale});
+    opacity:${op}; z-index:${10-abs}">
+    <div class="rv-card-inner" style="width:${w}px;height:${h}px;
+      box-shadow:${center?`0 0 50px ${meta.glow}60,0 20px 50px rgba(0,0,0,0.9)`:'0 8px 30px rgba(0,0,0,0.7)'};
+      border:${center?`2px solid ${meta.glow}50`:'1px solid #ffffff08'}">
+      ${thumb}
+    </div>
+  </div>`
+}
+
+function renderInfo() {
+  const meta = getMeta()
+  const g    = getCurrentGame()
+  const filtered = getFiltered()
+  const safe = Math.min(gameIdx, Math.max(0, filtered.length-1))
+
+  document.getElementById('rvBg').style.background =
+    `radial-gradient(ellipse 80% 60% at 50% 35%, ${meta.glow}15 0%, transparent 70%)`
+
+  const btn = document.getElementById('rvPlayBtn')
+  btn.style.background = `linear-gradient(135deg, ${meta.color}, ${meta.glow})`
+  btn.style.boxShadow  = `0 4px 16px ${meta.glow}50`
+  btn.style.color      = '#fff'
+  btn.style.border     = 'none'
+
+  document.getElementById('rvTitle').textContent = g?.nome || '—'
+  document.getElementById('rvTitle').style.textShadow = `0 0 20px ${meta.glow}`
+  document.getElementById('rvSub').textContent = g
+    ? `${meta.label} · ${safe+1} / ${filtered.length}` : ''
+
+  if (!tvMode) {
+    document.getElementById('rvHint').textContent = '◀▶ navegar · A jogar · Guide menu · B sair'
+  } else {
+    document.getElementById('rvHint').textContent = '◀▶ navegar · A jogar · Guide menu'
+  }
+}
+
+function update() {
+  renderSystems()
+  renderCarousel()
+  renderInfo()
+}
+
+// Launch
+function launchGame() {
+  const g = getCurrentGame()
+  if (!g) return
+  const meta = getMeta()
+
+  // Animação de launch
+  const overlay = document.createElement('div')
+  overlay.className = 'launch-overlay'
+  if (g.thumb) {
+    overlay.innerHTML = `<div class="launch-card" style="width:240px;height:320px;box-shadow:0 0 80px ${meta.glow}">
+      <img src="${g.thumb}" style="width:100%;height:100%;object-fit:cover">
+    </div>`
+  }
+  document.body.appendChild(overlay)
+
+  setTimeout(() => {
+    sessionStorage.setItem('rc_from_rv', '1')
+    window.location.href = `/player.html?id=${g.id}`
+  }, 700)
+}
+
+document.getElementById('rvPlayBtn').addEventListener('click', launchGame)
+
+// Menu Guide
+const MENU_ITEMS = [
+  { icon:'▶', label:'Continuar',     action: closeMenu },
+  ...(tvMode ? [] : [{ icon:'🖥', label:'Modo Desktop', action: () => { closeMenu(); tryExit() } }]),
+  { icon:'⏻',  label:'Sair da conta', action: () => { logout() } },
+]
+
+function openMenu() {
+  menuSel = 0
+  const el = document.getElementById('rvMenuItems')
+  el.innerHTML = MENU_ITEMS.map((item, i) =>
+    `<button class="rv-menu-item${i===0?' selected':''}" data-idx="${i}">
+      <span>${item.icon}</span><span>${item.label}</span>
+    </button>`
+  ).join('')
+  el.querySelectorAll('.rv-menu-item').forEach(b => {
+    b.addEventListener('click', () => MENU_ITEMS[+b.dataset.idx]?.action())
+    b.addEventListener('mouseover', () => selectMenu(+b.dataset.idx))
+  })
+  document.getElementById('rvMenuOverlay').classList.remove('hidden')
+  menuOpen = true
+}
+
+function closeMenu() {
+  document.getElementById('rvMenuOverlay').classList.add('hidden')
+  menuOpen = false
+}
+
+function selectMenu(i) {
+  menuSel = i
+  document.querySelectorAll('.rv-menu-item').forEach((b, idx) => {
+    b.classList.toggle('selected', idx === i)
+  })
+  const meta = getMeta()
+  document.querySelectorAll('.rv-menu-item.selected').forEach(b => {
+    b.style.borderLeftColor = meta.glow
+  })
+}
+
+// Confirmação saída
+function tryExit() {
+  if (tvMode) return
+  const meta = getMeta()
+  const box = document.getElementById('rvConfirmBox')
+  box.style.borderColor = meta.glow
+  document.getElementById('rvConfirm').classList.remove('hidden')
+  document.getElementById('rvConfirmYes').style.background = meta.color
+  confirmOpen = true
+  confirmSel = 1  // padrão: Cancelar
+}
+
+document.getElementById('rvConfirmYes').addEventListener('click', () => { window.location.href = '/library.html' })
+document.getElementById('rvConfirmNo').addEventListener('click',  () => {
+  document.getElementById('rvConfirm').classList.add('hidden')
+  confirmOpen = false
+})
+
+// Gamepad
+function setupGamepad() {
+  onGamepad((btn, type) => {
+    if (type !== 'press' && type !== 'hold') return
+    const press = type === 'press'
+    const nav   = type === 'press' || type === 'hold'
+
+    if (menuOpen) {
+      if (press && btn === BTN.UP)    selectMenu(Math.max(0, menuSel-1))
+      if (press && btn === BTN.DOWN)  selectMenu(Math.min(MENU_ITEMS.length-1, menuSel+1))
+      if (press && btn === BTN.A)     MENU_ITEMS[menuSel]?.action()
+      if (press && (btn === BTN.B || btn === BTN.GUIDE)) closeMenu()
+      return
+    }
+
+    if (confirmOpen) {
+      if (press && (btn === BTN.LEFT || btn === BTN.RIGHT)) {
+        confirmSel = confirmSel === 0 ? 1 : 0
+        // Destaca botão selecionado
+        const btns = document.querySelectorAll('#rvConfirmBox button')
+        btns.forEach((b, i) => b.style.opacity = i === confirmSel ? '1' : '0.5')
+      }
+      if (press && btn === BTN.A) {
+        if (confirmSel === 0) window.location.href = '/library.html'
+        else { document.getElementById('rvConfirm').classList.add('hidden'); confirmOpen = false }
+      }
+      if (press && (btn === BTN.B || btn === BTN.X)) {
+        document.getElementById('rvConfirm').classList.add('hidden')
+        confirmOpen = false
+      }
+      return
+    }
+
+    // Navegação normal
+    if (nav && btn === BTN.LEFT)  navLeft()
+    if (nav && btn === BTN.RIGHT) navRight()
+    if (press && btn === BTN.UP)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; update() }
+    if (press && btn === BTN.DOWN) { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx = 0; navStart = 0; update() }
+    if (press && btn === BTN.LB)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; update() }
+    if (press && btn === BTN.RB)   { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx = 0; navStart = 0; update() }
+    if (press && btn === BTN.A)    launchGame()
+    if (press && btn === BTN.GUIDE) openMenu()
+    if (press && btn === BTN.B && !tvMode) tryExit()
+
+    // Navstart para paginação
+    if (btn === BTN.LEFT || btn === BTN.RIGHT) {
+      if (!navStart) navStart = performance.now()
+    } else if (!([BTN.LEFT, BTN.RIGHT].includes(btn))) {
+      navStart = 0
+    }
+  })
+}
+
+const PAGE = 20
+function navLeft() {
+  const filtered = getFiltered()
+  const held = navStart ? performance.now() - navStart : 0
+  if (held > 2000) {
+    const p = Math.floor(gameIdx / PAGE)
+    gameIdx = Math.max(0, (p-1)*PAGE)
+    navStart = performance.now()
+  } else {
+    gameIdx = Math.max(0, gameIdx-1)
+  }
+  update()
+}
+function navRight() {
+  const filtered = getFiltered()
+  const held = navStart ? performance.now() - navStart : 0
+  if (held > 2000) {
+    const p = Math.floor(gameIdx / PAGE)
+    gameIdx = Math.min(filtered.length-1, (p+1)*PAGE)
+    navStart = performance.now()
+  } else {
+    gameIdx = Math.min(filtered.length-1, gameIdx+1)
+  }
+  update()
+}
+
+// Mouse no carousel (clique delegado já no renderCarousel)
+function setupMouse() {}
+
+// Swipe touch
+function setupTouch() {
+  let tx0 = 0
+  document.getElementById('rvCarousel').addEventListener('touchstart', e => { tx0 = e.touches[0].clientX }, {passive:true})
+  document.getElementById('rvCarousel').addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - tx0
+    if (Math.abs(dx) > 40) {
+      if (dx < 0) navRight()
+      else        navLeft()
+    }
+  }, {passive:true})
+}
+
+// Teclado
+function setupKeyboard() {
+  document.addEventListener('keydown', e => {
+    if (menuOpen) {
+      if (e.key === 'ArrowUp')    selectMenu(Math.max(0, menuSel-1))
+      if (e.key === 'ArrowDown')  selectMenu(Math.min(MENU_ITEMS.length-1, menuSel+1))
+      if (e.key === 'Enter')      MENU_ITEMS[menuSel]?.action()
+      if (e.key === 'Escape')     closeMenu()
+      return
+    }
+    if (e.key === 'ArrowLeft')  navLeft()
+    if (e.key === 'ArrowRight') navRight()
+    if (e.key === 'ArrowUp')    { sysIdx = Math.max(0, sysIdx-1); gameIdx=0; update() }
+    if (e.key === 'ArrowDown')  { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx=0; update() }
+    if (e.key === 'Enter')      launchGame()
+    if (e.key === 'Escape' && !tvMode) tryExit()
+  })
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+}
+</script>
+</body>
+</html>

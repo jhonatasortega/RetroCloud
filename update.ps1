@@ -1,14 +1,12 @@
-$HOST_IP = "192.168.0.233"
-$USER    = "jortega"
-$DESTINO = "/home/jortega/retrocloud"
+# Atualização rápida — copia frontend e reinicia nginx
+$HOST = "jortega@192.168.0.233"
+$DEST = "/home/jortega/retrocloud"
 
-Write-Host "`n[RetroCloud] Atualizando frontend (build)..." -ForegroundColor Cyan
+Write-Host "`n[RetroCloud] Atualizando..." -ForegroundColor Cyan
 
-# Copia só o src
-scp -r ".\frontend\src"     "${USER}@${HOST_IP}:${DESTINO}/frontend/"
-scp    ".\frontend\vite.config.js" "${USER}@${HOST_IP}:${DESTINO}/frontend/"
+scp -r ".\frontend2" "${HOST}:${DEST}/"
+scp    ".\nginx\nginx.conf" "${HOST}:${DEST}/nginx/"
 
-# Rebuild só o frontend
-ssh "${USER}@${HOST_IP}" "cd $DESTINO && docker compose build retrocloud_frontend && docker compose up -d retrocloud_frontend"
+ssh $HOST "docker restart retrocloud_nginx"
 
-Write-Host "`n[RetroCloud] Pronto! http://$HOST_IP" -ForegroundColor Green
+Write-Host "`n[RetroCloud] Pronto! http://192.168.0.233" -ForegroundColor Green
