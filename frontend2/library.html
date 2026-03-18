@@ -173,9 +173,20 @@ function updateInputMode() {
   badge.textContent = gp ? '🕹 Controle' : '🖥 Desktop'
   rvBtn.style.display = gp ? '' : 'none'
 }
-window.addEventListener('gamepadconnected',    updateInputMode)
+window.addEventListener('gamepadconnected', () => {
+  updateInputMode()
+  // Redireciona automaticamente para RetroVision quando controle conecta
+  if (!window.location.pathname.includes('retrovision')) {
+    window.location.href = '/retrovision.html'
+  }
+})
 window.addEventListener('gamepaddisconnected', updateInputMode)
 updateInputMode()
+
+// Se já tem controle conectado ao carregar, vai para RetroVision
+if (hasGamepad()) {
+  window.location.href = '/retrovision.html'
+}
 
 rvBtn.addEventListener('click', () => { window.location.href = '/retrovision.html' })
 

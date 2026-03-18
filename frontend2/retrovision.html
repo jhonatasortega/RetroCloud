@@ -172,20 +172,69 @@ function renderCarousel() {
   const safe = Math.min(gameIdx, Math.max(0, filtered.length-1))
   const wrap = document.getElementById('rvCards')
 
-  const cards = []
+  // Coleta os índices que devem aparecer
+  const visible = []
   for (let i = safe-RANGE; i <= safe+RANGE; i++) {
-    if (i < 0 || i >= filtered.length) continue
+    if (i >= 0 && i < filtered.length) visible.push(i)
+  }
+
+  // Remove cards que não devem mais aparecer
+  wrap.querySelectorAll('.rv-card').forEach(c => {
+    if (!visible.includes(+c.dataset.idx)) c.remove()
+  })
+
+  // Adiciona ou atualiza cada card visível
+  visible.forEach(i => {
     const offset = i - safe
     const g = filtered[i]
-    cards.push(cardHTML(g, offset, meta, offset === 0, i))
-  }
-  wrap.innerHTML = cards.join('')
-  wrap.querySelectorAll('.rv-card').forEach(c => {
-    c.addEventListener('click', () => {
-      const idx = +c.dataset.idx
-      if (idx === safe) launchGame()
-      else { gameIdx = idx; update() }
-    })
+    const abs = Math.abs(offset)
+    const center = offset === 0
+    const w = center ? 200 : 155
+    const h = center ? 270 : 205
+    const scale = center ? 1 : Math.max(0.52, 1 - abs*0.18)
+    const tx = offset * 220
+    const tz = center ? 50 : -abs*80
+    const ry = offset * -12
+    const op = center ? 1 : Math.max(0.25, 1-abs*0.25)
+
+    let card = wrap.querySelector(`.rv-card[data-idx="${i}"]`)
+    if (!card) {
+      // Cria novo card
+      card = document.createElement('div')
+      card.className = 'rv-card'
+      card.dataset.idx = i
+      const thumb = g.thumb
+        ? `<img src="${g.thumb}" alt="" loading="lazy" decoding="async"
+                onerror="this.style.display='none'"
+                style="width:100%;height:100%;object-fit:cover;display:block">`
+        : `<div class="rv-card-placeholder" style="background:linear-gradient(135deg,${meta.color}30,#000)">
+            <span>${meta.emoji}</span><span>${esc(g.nome)}</span></div>`
+      card.innerHTML = `<div class="rv-card-inner" style="width:${w}px;height:${h}px">${thumb}</div>`
+      card.addEventListener('click', () => {
+        const idx = +card.dataset.idx
+        if (idx === safe) launchGame()
+        else { gameIdx = idx; update() }
+      })
+      wrap.appendChild(card)
+    }
+
+    // Atualiza transform (CSS transition faz a animação)
+    card.style.transform = `translateX(${tx}px) translateZ(${tz}px) rotateY(${ry}deg) scale(${scale})`
+    card.style.opacity   = op
+    card.style.zIndex    = 10 - abs
+
+    // Atualiza tamanho do inner
+    const inner = card.querySelector('.rv-card-inner')
+    if (inner) {
+      inner.style.width  = w + 'px'
+      inner.style.height = h + 'px'
+      inner.style.boxShadow = center
+        ? `0 0 50px ${meta.glow}60,0 20px 50px rgba(0,0,0,0.9)`
+        : '0 8px 30px rgba(0,0,0,0.7)'
+      inner.style.border = center
+        ? `2px solid ${meta.glow}50`
+        : '1px solid #ffffff08'
+    }
   })
 }
 
