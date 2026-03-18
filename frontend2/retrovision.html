@@ -183,6 +183,9 @@ function renderCarousel() {
   const safe = Math.min(gameIdx, Math.max(0, filtered.length-1))
   const wrap = document.getElementById('rvCards')
   if (!wrap) return
+  // Garante perspective no pai
+  const carousel = document.getElementById('rvCarousel')
+  if (carousel) carousel.style.perspective = '1200px'
 
   const frags = []
   for (let i = safe-RANGE; i <= safe+RANGE; i++) {
@@ -291,9 +294,11 @@ function launchGame() {
   }
   document.body.appendChild(overlay)
 
+  // Entra em fullscreen AGORA (dentro do gesture do clique em Jogar)
+  document.documentElement.requestFullscreen?.().catch(() => {})
+
   setTimeout(() => {
     sessionStorage.setItem('rc_from_rv', '1')
-    sessionStorage.setItem('rc_want_fs', '1')
     sessionStorage.setItem('rc_rv_sys', sysIdx)
     sessionStorage.setItem('rc_rv_game', gameIdx)
     window.location.href = `/player.html?id=${g.id}`
