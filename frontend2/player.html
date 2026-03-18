@@ -80,13 +80,9 @@ if (!id) { location.href = '/library.html'; throw 0 }
 
 // ── Voltar ────────────────────────────────────────────────────────────────
 const goBack = () => {
-  window._rcWantFs = false
   try { window.EJS_emulator?.pause?.() } catch {}
-  if (document.fullscreenElement) {
-    document.exitFullscreen().finally(() => doNav())
-  } else {
-    doNav()
-  }
+  if (isFs) exitFs()
+  setTimeout(doNav, 100)
 }
 function doNav() {
   sessionStorage.removeItem('rc_from_rv')
@@ -176,23 +172,15 @@ function hideLoading() {
     scr.style.opacity = '0'
     scr.style.transition = 'opacity 0.5s'
     setTimeout(() => { scr.style.display = 'none' }, 500)
-    // Fullscreen depois que EJS terminou de redimensionar
-    if (!document.fullscreenElement) {
-      window._rcWantFs = true
-      document.getElementById('playerWrap').requestFullscreen?.().catch(() => {
-        window._rcWantFs = false
-      })
-    }
     window.dispatchEvent(new Event('resize'))
+
+    // Entra em fullscreen CSS — não usa API nativa, EJS não pode interferir
+    enterFs()
   }, 800)
 }
 
-// Callback oficial EJS
 window.EJS_onGameStart = hideLoading
-
-// Fallback: esconde após 15s se EJS_onGameStart não disparar
 setTimeout(hideLoading, 15000)
-
 const script = document.createElement('script')
 script.id  = 'emulatorjs-script'
 script.src = `https://cdn.emulatorjs.org/stable/data/loader.js?v=${Date.now()}`
@@ -200,7 +188,9 @@ document.body.appendChild(script)
 
 
 
-// ── Fullscreen ────────────────────────────────────────────────────────────
+// ── Fullscreen via CSS (não usa browser Fullscreen API — evita conflito com EJS) ──
+let isFs = false
+
 const playerBar = document.getElementById('playerBar')
 const fsBtns    = document.getElementById('fsBtns')
 let fsTimer
@@ -211,37 +201,35 @@ function showFsBtns() {
   fsTimer = setTimeout(() => fsBtns.classList.remove('visible'), 3000)
 }
 
-function toggleFs() {
-  if (!document.fullscreenElement) {
-    window._rcWantFs = true
-    document.getElementById('playerWrap').requestFullscreen?.().catch(() => { window._rcWantFs = false })
-  } else {
-    window._rcWantFs = false
-    document.exitFullscreen?.()
-  }
+function enterFs() {
+  const wrap = document.getElementById('playerWrap')
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:9998;background:#000;flex:1'
+  document.getElementById('emulator-container').style.height = '100vh'
+  playerBar.style.display = 'none'
+  isFs = true
+  showFsBtns()
+  window.dispatchEvent(new Event('resize'))
 }
 
-document.addEventListener('fullscreenchange', () => {
-  const isFs = !!document.fullscreenElement
-  playerBar.style.display = isFs ? 'none' : ''
-  document.getElementById('emulator-container').style.height = isFs ? '100vh' : 'calc(100vh - 48px)'
-  if (isFs) showFsBtns()
+function exitFs() {
+  const wrap = document.getElementById('playerWrap')
+  wrap.style.cssText = 'flex:1;position:relative;background:#000'
+  document.getElementById('emulator-container').style.height = 'calc(100vh - 48px)'
+  playerBar.style.display = ''
+  isFs = false
+  fsBtns.classList.remove('visible')
+  window.dispatchEvent(new Event('resize'))
+}
 
-  // Se saiu do fullscreen inesperadamente (EJS saiu), reentrar
-  if (!isFs && window._rcWantFs) {
-    setTimeout(() => {
-      document.getElementById('playerWrap').requestFullscreen?.().catch(() => {
-        window._rcWantFs = false  // browser recusou, desiste
-      })
-    }, 100)
-  }
-})
+function toggleFs() {
+  isFs ? exitFs() : enterFs()
+}
 
 document.getElementById('fsBtn').addEventListener('click', toggleFs)
 document.getElementById('fsMenuBtn').addEventListener('click', openMenu)
 document.getElementById('fsExitBtn').addEventListener('click', toggleFs)
 document.getElementById('playerWrap').addEventListener('mousemove', () => {
-  if (document.fullscreenElement) showFsBtns()
+  if (isFs) showFsBtns()
 })
 
 // ── Menu ──────────────────────────────────────────────────────────────────
