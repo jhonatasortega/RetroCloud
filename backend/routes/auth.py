@@ -85,13 +85,26 @@ def login():
     # Verificar senha
     if not bcrypt.checkpw(data['senha'].encode('utf-8'), user.senha_hash.encode('utf-8')):
         return jsonify({'message': 'Credenciais inválidas'}), 401
-    
-    # Verificar limite de sessões simultâneas POR USUÁRIO
+
+    # Limpa sessões expiradas automaticamente
+    from datetime import datetime as dt
+    Session.query.filter(
+        Session.user_id == user.id,
+        Session.expiracao < dt.utcnow()
+    ).delete()
+    db.session.commit()
+
+    # Verifica limite de sessões simultâneas
     config = SystemConfig.query.first()
     if config:
         active_sessions = Session.query.filter_by(user_id=user.id, ativo=True).count()
         if active_sessions >= config.max_sessions:
-            return jsonify({'message': 'Limite de sessões simultâneas atingido para este usuário'}), 429
+            # Remove a sessão mais antiga para dar lugar à nova
+            oldest = Session.query.filter_by(user_id=user.id, ativo=True)\
+                .order_by(Session.expiracao.asc()).first()
+            if oldest:
+                db.session.delete(oldest)
+                db.session.commit()
     
     # Gerar token
     token = generate_token(user.id)
@@ -171,4 +184,3 @@ def get_current_user():
         return jsonify({'message': 'Usuário não encontrado'}), 404
     
     return jsonify({'user': user.to_dict()}), 200
-
