@@ -147,3 +147,4 @@ class SystemConfig(db.Model):
             'session_time_limit': self.session_time_limit,
             'time_limit_enabled': self.time_limit_enabled
         }
+

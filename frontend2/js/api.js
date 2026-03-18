@@ -60,6 +60,8 @@ export const api = {
 
   // Thumbs
   fetchThumb:  (id)          => req('POST', `/scraper/rom/${id}/fetch-thumb`),
+  fetchAllThumbs: ()         => req('POST', '/scraper/roms/fetch-all-thumbs'),
+  clearThumbs: (sistema)     => req('POST', '/scraper/roms/clear-thumbs', sistema ? { sistema } : {}),
   uploadThumb: (id, form)    => req('POST', `/admin/roms/${id}/thumb`, form, true),
 
   // Upload ROM

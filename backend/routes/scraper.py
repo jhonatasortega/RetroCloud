@@ -70,7 +70,40 @@ def fetch_all_thumbs(current_user):
     return jsonify({'atualizadas': ok, 'falhas': len(falhas), 'detalhes': falhas[:20]}), 200
 
 
-@scraper_bp.route('/status', methods=['GET'])
+@scraper_bp.route('/roms/clear-thumbs', methods=['POST'])
+@admin_required
+def clear_thumbs(current_user):
+    """Apaga thumbs de um sistema (ou todos) para rebuscar."""
+    import os
+    from flask import current_app
+    data    = request.get_json(silent=True) or {}
+    sistema = data.get('sistema')  # None = todos
+
+    query = Rom.query
+    if sistema:
+        query = query.filter_by(sistema=sistema)
+
+    roms = query.filter(Rom.thumb != None).all()
+    apagadas = 0
+
+    for rom in roms:
+        # Remove arquivo físico
+        if rom.thumb:
+            path = os.path.join(current_app.root_path, rom.thumb.lstrip('/'))
+            for ext in ('.jpg', '.png', '.jpeg', '.webp'):
+                stem = os.path.splitext(path)[0]
+                f = stem + ext
+                if os.path.exists(f):
+                    try: os.remove(f)
+                    except: pass
+        rom.thumb = None
+        apagadas += 1
+
+    db.session.commit()
+    return jsonify({'message': f'{apagadas} thumbs apagadas', 'apagadas': apagadas}), 200
+
+
+
 @admin_required
 def scraper_status(current_user):
     """Quais fontes estão ativas."""

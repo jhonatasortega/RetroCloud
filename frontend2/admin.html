@@ -115,7 +115,8 @@ async function renderRoms(el) {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <h2 class="font-head" style="font-size:22px">ROMs <span class="text-muted text-sm">(${games.length})</span></h2>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-secondary btn-sm" id="fetchAllBtn">🔍 Buscar todas as capas</button>
+        <button class="btn btn-secondary btn-sm" id="fetchAllBtn">🔍 Buscar capas sem thumb</button>
+        <button class="btn btn-secondary btn-sm" id="clearSysBtn">🗑 Limpar thumbs do sistema</button>
         <button class="btn btn-primary btn-sm" id="uploadBtn">+ Upload ROM</button>
       </div>
     </div>
@@ -185,13 +186,36 @@ async function renderRoms(el) {
     renderTable()
   })
 
-  // Fetch all
+  // Fetch all thumbs sem capa
   el.querySelector('#fetchAllBtn').addEventListener('click', async () => {
-    if (!confirm('Buscar capas para todas as ROMs sem capa? Pode demorar.')) return
+    if (!confirm('Buscar capas para ROMs sem capa? Pode demorar.')) return
+    const btn = el.querySelector('#fetchAllBtn')
+    btn.disabled = true; btn.textContent = 'Buscando...'
     try {
-      const r = await api.fetchThumb('roms/fetch-all').catch(() => api.games())
-      toastOk('Busca iniciada em background')
+      const r = await api.fetchAllThumbs()
+      toastOk(`${r.atualizadas} capas encontradas, ${r.falhas} falhas`)
+      loadTab('roms')
     } catch(e) { toastErr(e.message) }
+    btn.disabled = false; btn.textContent = '🔍 Buscar capas sem thumb'
+  })
+
+  // Limpar thumbs do sistema ativo e rebuscar
+  el.querySelector('#clearSysBtn').addEventListener('click', async () => {
+    const sys = activeSys || null
+    const msg = sys ? `Limpar todas as thumbs de ${sys.toUpperCase()} e rebuscar?` : 'Limpar TODAS as thumbs e rebuscar?'
+    if (!confirm(msg)) return
+    const btn = el.querySelector('#clearSysBtn')
+    btn.disabled = true; btn.textContent = 'Limpando...'
+    try {
+      const r = await api.clearThumbs(sys)
+      toastOk(r.message)
+      // Rebusca automaticamente
+      btn.textContent = 'Rebuscando...'
+      const r2 = await api.fetchAllThumbs()
+      toastOk(`${r2.atualizadas} novas capas encontradas`)
+      loadTab('roms')
+    } catch(e) { toastErr(e.message) }
+    btn.disabled = false; btn.textContent = '🗑 Limpar thumbs do sistema'
   })
 
   // Upload
