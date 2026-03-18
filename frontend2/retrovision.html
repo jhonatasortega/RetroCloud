@@ -414,8 +414,18 @@ function setupGamepad() {
     }
 
     // Navegação normal
-    if (nav && btn === BTN.LEFT)  navLeft()
-    if (nav && btn === BTN.RIGHT) navRight()
+    if (btn === BTN.LEFT || btn === BTN.RIGHT) {
+      if (press) {
+        // Clique simples — navega um por um e inicia timer
+        navStart = performance.now()
+        if (btn === BTN.LEFT)  navLeft(false)
+        if (btn === BTN.RIGHT) navRight(false)
+      } else if (type === 'hold') {
+        // Segurado — passa tempo acumulado para decidir se pula página
+        if (btn === BTN.LEFT)  navLeft(true)
+        if (btn === BTN.RIGHT) navRight(true)
+      }
+    }
     if (press && btn === BTN.UP)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; update() }
     if (press && btn === BTN.DOWN) { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx = 0; navStart = 0; update() }
     if (press && btn === BTN.LB)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; update() }
@@ -423,20 +433,13 @@ function setupGamepad() {
     if (press && btn === BTN.A)    launchGame()
     if (press && btn === BTN.GUIDE) openMenu()
     if (press && btn === BTN.B && !tvMode) tryExit()
-
-    // Navstart para paginação
-    if (btn === BTN.LEFT || btn === BTN.RIGHT) {
-      if (!navStart) navStart = performance.now()
-    } else if (!([BTN.LEFT, BTN.RIGHT].includes(btn))) {
-      navStart = 0
-    }
   })
 }
 
 const PAGE = 20
-function navLeft() {
+function navLeft(isHold = false) {
   const filtered = getFiltered()
-  const held = navStart ? performance.now() - navStart : 0
+  const held = isHold && navStart ? performance.now() - navStart : 0
   if (held > 2000) {
     const p = Math.floor(gameIdx / PAGE)
     gameIdx = Math.max(0, (p-1)*PAGE)
@@ -446,9 +449,9 @@ function navLeft() {
   }
   update()
 }
-function navRight() {
+function navRight(isHold = false) {
   const filtered = getFiltered()
-  const held = navStart ? performance.now() - navStart : 0
+  const held = isHold && navStart ? performance.now() - navStart : 0
   if (held > 2000) {
     const p = Math.floor(gameIdx / PAGE)
     gameIdx = Math.min(filtered.length-1, (p+1)*PAGE)
