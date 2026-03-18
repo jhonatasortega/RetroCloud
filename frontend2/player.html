@@ -23,33 +23,33 @@
 </div>
 
 <div id="playerWrap" style="flex:1;position:relative;background:#000">
-  <div id="emulator-container" style="width:100%;height:calc(100vh - 48px);min-height:400px;display:block;background:#000"></div>
+  <div id="emulator-container" style="width:100%;height:calc(100vh - 48px);display:block;background:#000"></div>
 
-  <!-- Tela de loading -->
-  <div id="loadingScreen" style="
-    position:absolute;inset:0;background:#000;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;
-    z-index:10;transition:opacity 0.5s ease">
-    <div id="loadThumb" style="width:180px;height:240px;border-radius:14px;overflow:hidden;background:#111;
-      box-shadow:0 0 60px rgba(102,192,244,0.3)"></div>
-    <div style="text-align:center">
-      <div id="loadTitle" style="font-family:Rajdhani,sans-serif;font-size:24px;font-weight:700;
-        color:#fff;letter-spacing:2px;margin-bottom:6px"></div>
-      <div id="loadSys" style="font-size:12px;color:rgba(255,255,255,0.4);letter-spacing:3px;
-        text-transform:uppercase;margin-bottom:20px"></div>
-      <div style="width:240px;height:2px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden">
-        <div id="loadBar" style="height:100%;background:#66c0f4;border-radius:2px;
-          width:0%;transition:width 0.1s linear"></div>
-      </div>
-      <div style="font-size:11px;color:rgba(255,255,255,0.3);letter-spacing:4px;
-        text-transform:uppercase;margin-top:10px">A carregar...</div>
-    </div>
-  </div>
-
-  <!-- Botões fullscreen -->
+  <!-- Botões flutuantes em fullscreen -->
   <div class="fs-btns" id="fsBtns">
     <button class="fs-btn" id="fsMenuBtn">☰</button>
     <button class="fs-btn" id="fsExitBtn">✕</button>
+  </div>
+
+  <!-- Loading screen — O ÚNICO ponto de entrada para fullscreen -->
+  <div id="loadingScreen" style="position:absolute;inset:0;background:#000;z-index:10;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px">
+    <div id="loadThumb" style="width:160px;height:213px;border-radius:12px;overflow:hidden;
+      background:#111;box-shadow:0 0 60px rgba(102,192,244,0.25)"></div>
+    <div style="text-align:center">
+      <div id="loadTitle" style="font-family:Rajdhani,sans-serif;font-size:22px;font-weight:700;
+        color:#fff;letter-spacing:2px;margin-bottom:4px"></div>
+      <div id="loadSys" style="font-size:11px;color:rgba(255,255,255,0.4);letter-spacing:3px;
+        text-transform:uppercase;margin-bottom:16px"></div>
+      <!-- Barra de progresso -->
+      <div id="loadBarWrap" style="width:220px;height:2px;background:rgba(255,255,255,0.1);
+        border-radius:2px;overflow:hidden;margin:0 auto 8px">
+        <div id="loadBar" style="height:100%;background:#66c0f4;width:0%;transition:width 0.1s linear"></div>
+      </div>
+      <div id="loadStatus" style="font-size:11px;color:rgba(255,255,255,0.3);letter-spacing:3px;
+        text-transform:uppercase">A carregar...</div>
+    </div>
+
   </div>
 
   <!-- Menu do jogo -->
@@ -72,23 +72,29 @@ import { startGamepad, onGamepad, BTN } from '/js/gamepad.js'
 
 await requireAuth()
 
-const params  = new URLSearchParams(location.search)
-const id      = params.get('id')
-const fromRV  = sessionStorage.getItem('rc_from_rv') === '1'
+const params = new URLSearchParams(location.search)
+const id     = params.get('id')
+const fromRV = sessionStorage.getItem('rc_from_rv') === '1'
 
 if (!id) { location.href = '/library.html'; throw 0 }
 
-// Volta
+// ── Voltar ────────────────────────────────────────────────────────────────
 const goBack = () => {
+  window._rcWantFs = false
   try { window.EJS_emulator?.pause?.() } catch {}
-  if (document.fullscreenElement) document.exitFullscreen?.()
+  if (document.fullscreenElement) {
+    document.exitFullscreen().finally(() => doNav())
+  } else {
+    doNav()
+  }
+}
+function doNav() {
   sessionStorage.removeItem('rc_from_rv')
-  const dest = fromRV ? '/retrovision.html?back=1' : '/library.html'
-  setTimeout(() => { location.href = dest }, 100)
+  location.href = fromRV ? '/retrovision.html?back=1' : '/library.html'
 }
 document.getElementById('backBtn').addEventListener('click', goBack)
 
-// Carrega dados
+// ── Carrega dados ─────────────────────────────────────────────────────────
 let game, playInfo
 try {
   ;[{ game }, playInfo] = await Promise.all([api.game(id), api.play(id)])
@@ -101,112 +107,102 @@ document.title = `RetroCloud — ${game.nome}`
 document.getElementById('gameTitle').textContent     = game.nome
 document.getElementById('gameSys').textContent       = game.sistema?.toUpperCase() || ''
 document.getElementById('menuGameTitle').textContent = game.nome
-
-// Preenche loading screen
-document.getElementById('loadTitle').textContent = game.nome
-document.getElementById('loadSys').textContent   = game.sistema?.toUpperCase() || ''
+document.getElementById('loadTitle').textContent     = game.nome
+document.getElementById('loadSys').textContent       = game.sistema?.toUpperCase() || ''
 if (game.thumb) {
   document.getElementById('loadThumb').innerHTML =
-    `<img src="${game.thumb}" style="width:100%;height:100%;object-fit:cover">`
+    `<img src="${game.thumb}" style="width:100%;height:100%;object-fit:cover;display:block">`
 }
 
-// EmulatorJS
+// ── EmulatorJS ────────────────────────────────────────────────────────────
 const CORES = {
   ps1:'psx', psx:'psx', snes:'snes', n64:'n64',
   gba:'gba', gbc:'gbc', gb:'gb',
   megadrive:'segaMD', genesis:'segaMD', md:'segaMD', nes:'nes',
 }
 
-let ejsLoaded = false
-function initEJS() {
-  if (ejsLoaded) return
-  const sys  = game.sistema?.toLowerCase()
-  const core = CORES[sys] || sys
-  const rom  = playInfo.emulator_url
-    ? `/roms/${sys}/${playInfo.emulator_url.split('/').pop()}` : ''
+// Anima barra enquanto EJS carrega
+let barPct = 0
+const barTimer = setInterval(() => {
+  barPct = Math.min(barPct + (barPct < 70 ? 1.2 : 0.2), 92)
+  const bar = document.getElementById('loadBar')
+  if (bar) bar.style.width = barPct + '%'
+}, 100)
 
-  // Limpa instância anterior
-  document.getElementById('emulatorjs-script')?.remove()
-  document.getElementById('ejs-style')?.remove()
-  try { window.EJS_emulator?.pause?.() } catch {}
-  Object.keys(window).filter(k => k.startsWith('EJS_')).forEach(k => { try { delete window[k] } catch {} })
+const sys  = game.sistema?.toLowerCase()
+const core = CORES[sys] || sys
+const rom  = playInfo.emulator_url
+  ? `/roms/${sys}/${playInfo.emulator_url.split('/').pop()}` : ''
 
-  // Verifica container
-  const el = document.getElementById('emulator-container')
-  if (!el || el.offsetWidth === 0) { setTimeout(initEJS, 100); return }
+// Limpa globals EJS anteriores
+document.getElementById('emulatorjs-script')?.remove()
+try { window.EJS_emulator?.pause?.() } catch {}
+Object.keys(window).filter(k => k.startsWith('EJS_')).forEach(k => { try { delete window[k] } catch {} })
 
-  ejsLoaded = true
-
-  window.EJS_player             = '#emulator-container'
-  window.EJS_core               = core
-  window.EJS_gameUrl            = rom
-  window.EJS_pathtodata         = 'https://cdn.emulatorjs.org/stable/data/'
-  window.EJS_startOnLoaded      = true
-  window.EJS_fullscreenOnLoaded = true   // fullscreen oficial EJS
-  window.EJS_color              = '#66c0f4'
-  window.EJS_backgroundColor    = '#000000'
-  window.EJS_language           = 'en-US'
-  // Carrega mapeamento salvo
-  try {
-    const saved = localStorage.getItem('rc_ejs_controls')
-    if (saved) window.EJS_Settings = { defaultControllers: JSON.parse(saved) }
-  } catch {}
-  window.EJS_Buttons = {
-    playPause:false, restart:false, mute:false, settings:false,
-    fullscreen:false, saveState:false, loadState:false,
-    screenRecord:false, gamepad:false, cheat:false,
-    volume:false, saveSavFiles:true, contextMenu:false,
-  }
-
-  const st = document.createElement('style')
-  st.id = 'ejs-style'
-  st.textContent = `
-    #emulator-container .ejs_menu_bar,
-    #emulator-container .ejs_volume_bar,
-    #emulator-container .ejs_ctx_menu { display:none!important; }
-    #emulator-container canvas { display:block!important; }
-  `
-  document.head.appendChild(st)
-
-  // Callback quando jogo começa — esconde loading screen e entra em fullscreen
-  window.EJS_onGameStart = () => {
-    // requestFullscreen DEVE ser chamado aqui sincronicamente — dentro do gesture
-    if (!document.fullscreenElement) {
-      document.getElementById('playerWrap')?.requestFullscreen?.().catch(() => {})
-    }
-    clearInterval(window._rcBarTimer)
-    const bar = document.getElementById('loadBar')
-    const scr = document.getElementById('loadingScreen')
-    if (bar) bar.style.width = '100%'
-    setTimeout(() => {
-      if (scr) {
-        scr.style.opacity = '0'
-        setTimeout(() => { if (scr) scr.style.display = 'none' }, 500)
-      }
-      window.dispatchEvent(new Event('resize'))
-    }, 300)
-  }
-
-  const script = document.createElement('script')
-  script.id  = 'emulatorjs-script'
-  script.src = `https://cdn.emulatorjs.org/stable/data/loader.js?v=${Date.now()}`
-  document.body.appendChild(script)
+window.EJS_player          = '#emulator-container'
+window.EJS_core            = core
+window.EJS_gameUrl         = rom
+window.EJS_pathtodata      = 'https://cdn.emulatorjs.org/stable/data/'
+window.EJS_startOnLoaded   = true
+window.EJS_color           = '#66c0f4'
+window.EJS_backgroundColor = '#000000'
+window.EJS_language        = 'en-US'
+window.EJS_Buttons = {
+  playPause:false, restart:false, mute:false, settings:false,
+  fullscreen:false, saveState:false, loadState:false,
+  screenRecord:false, gamepad:false, cheat:false,
+  volume:false, saveSavFiles:true, contextMenu:false,
 }
 
-// Anima barra de loading
-let _barPct = 0
-window._rcBarTimer = setInterval(() => {
-  _barPct = Math.min(_barPct + (_barPct < 70 ? 1.5 : 0.3), 95)
+// Esconde barra EJS
+const st = document.createElement('style')
+st.id = 'ejs-style'
+st.textContent = `
+  #emulator-container .ejs_menu_bar,
+  #emulator-container .ejs_volume_bar,
+  #emulator-container .ejs_ctx_menu { display:none!important; }
+  #emulator-container canvas { display:block!important; }
+`
+document.head.appendChild(st)
+
+// Esconde loading quando jogo inicia e entra em fullscreen
+function hideLoading() {
+  clearInterval(barTimer)
+  const scr = document.getElementById('loadingScreen')
+  if (!scr || scr.style.display === 'none') return
   const bar = document.getElementById('loadBar')
-  if (bar) bar.style.width = _barPct + '%'
-}, 80)
+  if (bar) bar.style.width = '100%'
+  setTimeout(() => {
+    scr.style.opacity = '0'
+    scr.style.transition = 'opacity 0.5s'
+    setTimeout(() => { scr.style.display = 'none' }, 500)
+    // Fullscreen depois que EJS terminou de redimensionar
+    if (!document.fullscreenElement) {
+      window._rcWantFs = true
+      document.getElementById('playerWrap').requestFullscreen?.().catch(() => {
+        window._rcWantFs = false
+      })
+    }
+    window.dispatchEvent(new Event('resize'))
+  }, 800)
+}
 
-setTimeout(initEJS, 200)
+// Callback oficial EJS
+window.EJS_onGameStart = hideLoading
 
-// Fullscreen
-let isFs = false
-const bar    = document.getElementById('playerBar')
-const fsBtns = document.getElementById('fsBtns')
+// Fallback: esconde após 15s se EJS_onGameStart não disparar
+setTimeout(hideLoading, 15000)
+
+const script = document.createElement('script')
+script.id  = 'emulatorjs-script'
+script.src = `https://cdn.emulatorjs.org/stable/data/loader.js?v=${Date.now()}`
+document.body.appendChild(script)
+
+
+
+// ── Fullscreen ────────────────────────────────────────────────────────────
+const playerBar = document.getElementById('playerBar')
+const fsBtns    = document.getElementById('fsBtns')
 let fsTimer
 
 function showFsBtns() {
@@ -217,53 +213,50 @@ function showFsBtns() {
 
 function toggleFs() {
   if (!document.fullscreenElement) {
-    document.getElementById('playerWrap').requestFullscreen?.().catch(() => {})
+    window._rcWantFs = true
+    document.getElementById('playerWrap').requestFullscreen?.().catch(() => { window._rcWantFs = false })
   } else {
+    window._rcWantFs = false
     document.exitFullscreen?.()
   }
 }
+
 document.addEventListener('fullscreenchange', () => {
-  isFs = !!document.fullscreenElement
-  bar.style.display = isFs ? 'none' : ''
+  const isFs = !!document.fullscreenElement
+  playerBar.style.display = isFs ? 'none' : ''
   document.getElementById('emulator-container').style.height = isFs ? '100vh' : 'calc(100vh - 48px)'
   if (isFs) showFsBtns()
-})
-document.getElementById('fsBtn').addEventListener('click', toggleFs)
-document.getElementById('fsBtns').addEventListener('mousemove', showFsBtns)
-document.getElementById('fsBtns').addEventListener('touchstart', showFsBtns)
-document.getElementById('playerWrap').addEventListener('mousemove', () => { if (isFs) showFsBtns() })
 
-// Entra em fullscreen quando EJS iniciar o jogo (dentro do EJS_onGameStart que é disparado pelo user gesture)
-// Se veio de RetroVision, tenta fullscreen ao carregar
-const wantFs = sessionStorage.getItem('rc_want_fs') === '1'
-sessionStorage.removeItem('rc_want_fs')
-if (wantFs) {
-  // Listener para primeiro clique/touch do usuário
-  const fsOnGesture = () => {
-    toggleFs()
-    document.removeEventListener('click', fsOnGesture)
-    document.removeEventListener('touchstart', fsOnGesture)
-    document.removeEventListener('keydown', fsOnGesture)
+  // Se saiu do fullscreen inesperadamente (EJS saiu), reentrar
+  if (!isFs && window._rcWantFs) {
+    setTimeout(() => {
+      document.getElementById('playerWrap').requestFullscreen?.().catch(() => {
+        window._rcWantFs = false  // browser recusou, desiste
+      })
+    }, 100)
   }
-  document.addEventListener('click', fsOnGesture, { once: true })
-  document.addEventListener('touchstart', fsOnGesture, { once: true })
-  document.addEventListener('keydown', fsOnGesture, { once: true })
-}
+})
 
-// Menu
+document.getElementById('fsBtn').addEventListener('click', toggleFs)
+document.getElementById('fsMenuBtn').addEventListener('click', openMenu)
+document.getElementById('fsExitBtn').addEventListener('click', toggleFs)
+document.getElementById('playerWrap').addEventListener('mousemove', () => {
+  if (document.fullscreenElement) showFsBtns()
+})
+
+// ── Menu ──────────────────────────────────────────────────────────────────
 const MENU_ITEMS = [
-  { icon:'▶', label:'Continuar',          action: closeMenu },
-  { icon:'⊞', label:'Tela cheia',         action: toggleFs },
-  { icon:'💾', label:'Salvar estado',      action: () => { window.EJS_emulator?.saveState?.(); closeMenu() } },
-  { icon:'📂', label:'Carregar estado',    action: () => { window.EJS_emulator?.loadState?.(); closeMenu() } },
-  { icon:'🔄', label:'Reiniciar',          action: () => { window.EJS_emulator?.restart?.(); closeMenu() } },
-  { icon:'🎮', label:'Mapear controle',    action: () => { closeMenu(); openMapping() } },
-  { icon:'←',  label:'Sair do jogo',      action: goBack },
+  { icon:'▶', label:'Continuar',       action: closeMenu },
+  { icon:'⊞', label:'Tela cheia',      action: () => { closeMenu(); toggleFs() } },
+  { icon:'💾', label:'Salvar estado',   action: () => { window.EJS_emulator?.saveState?.(); closeMenu() } },
+  { icon:'📂', label:'Carregar estado', action: () => { window.EJS_emulator?.loadState?.(); closeMenu() } },
+  { icon:'🔄', label:'Reiniciar',       action: () => { window.EJS_emulator?.restart?.(); closeMenu() } },
+  { icon:'←',  label:'Sair do jogo',   action: goBack },
 ]
 
 let selectedItem = 0
-const overlay = document.getElementById('gameMenuOverlay')
-const itemsEl = document.getElementById('gameMenuItems')
+const menuOverlay = document.getElementById('gameMenuOverlay')
+const itemsEl     = document.getElementById('gameMenuItems')
 
 itemsEl.innerHTML = MENU_ITEMS.map((item, i) =>
   `<button class="game-menu-item${i===0?' selected':''}" data-idx="${i}">
@@ -273,7 +266,7 @@ itemsEl.innerHTML = MENU_ITEMS.map((item, i) =>
 
 itemsEl.addEventListener('click', e => {
   const btn = e.target.closest('.game-menu-item')
-  if (btn) { MENU_ITEMS[+btn.dataset.idx]?.action() }
+  if (btn) MENU_ITEMS[+btn.dataset.idx]?.action()
 })
 itemsEl.addEventListener('mouseover', e => {
   const btn = e.target.closest('.game-menu-item')
@@ -282,218 +275,33 @@ itemsEl.addEventListener('mouseover', e => {
 
 function selectMenuItem(i) {
   selectedItem = i
-  itemsEl.querySelectorAll('.game-menu-item').forEach((b, idx) => {
-    b.classList.toggle('selected', idx === i)
-  })
+  itemsEl.querySelectorAll('.game-menu-item').forEach((b, idx) =>
+    b.classList.toggle('selected', idx === i))
 }
-
-function openMenu()  { overlay.classList.remove('hidden'); selectMenuItem(0) }
-
-// ── Mapeamento de controle ────────────────────────────────────────────────
-// EJS control slots → descrição do botão no controle
-// value2 = identificador EJS do gamepad
-const EJS_SLOTS = [
-  { slot:0,  label:'B',    gpVal:'BUTTON_2',             x:422, y:189, r:16, color:'#f44336' },
-  { slot:1,  label:'Y',    gpVal:'BUTTON_4',             x:398, y:213, r:16, color:'#ff9800' },
-  { slot:2,  label:'SEL',  gpVal:'SELECT',               x:210, y:172, r:15 },
-  { slot:3,  label:'STA',  gpVal:'START',                x:280, y:172, r:15 },
-  { slot:4,  label:'↑',    gpVal:'DPAD_UP',              x:118, y:148, r:13 },
-  { slot:5,  label:'↓',    gpVal:'DPAD_DOWN',            x:118, y:190, r:13 },
-  { slot:6,  label:'←',    gpVal:'DPAD_LEFT',            x: 96, y:169, r:13 },
-  { slot:7,  label:'→',    gpVal:'DPAD_RIGHT',           x:140, y:169, r:13 },
-  { slot:8,  label:'A',    gpVal:'BUTTON_1',             x:398, y:165, r:16, color:'#4caf50' },
-  { slot:9,  label:'X',    gpVal:'BUTTON_3',             x:374, y:189, r:16, color:'#2196f3' },
-  { slot:10, label:'LB',   gpVal:'LEFT_TOP_SHOULDER',    x: 90, y: 65, r:17 },
-  { slot:11, label:'RB',   gpVal:'RIGHT_TOP_SHOULDER',   x:450, y: 65, r:17 },
-  { slot:12, label:'LT',   gpVal:'LEFT_BOTTOM_SHOULDER', x:105, y: 32, r:14 },
-  { slot:13, label:'RT',   gpVal:'RIGHT_BOTTOM_SHOULDER',x:435, y: 32, r:14 },
-]
-
-function openMapping() {
-  document.getElementById('mappingOverlay')?.remove()
-  cancelAnimationFrame(window._mapAnimId)
-
-  // Carrega bindings salvos (slot → keycode gamepad)
-  let customBindings = {}
-  try { customBindings = JSON.parse(localStorage.getItem('rc_ejs_controls') || '{}') } catch {}
-
-  const overlay = document.createElement('div')
-  overlay.id = 'mappingOverlay'
-  overlay.style.cssText = 'position:absolute;inset:0;z-index:600;background:rgba(0,0,0,0.96);display:flex;flex-direction:column;align-items:center;justify-content:center'
-
-  const SVG_NS = 'http://www.w3.org/2000/svg'
-  function mk(tag, attrs, txt) {
-    const el = document.createElementNS(SVG_NS, tag)
-    Object.entries(attrs).forEach(([k,v]) => el.setAttribute(k, String(v)))
-    if (txt !== undefined) el.textContent = txt
-    return el
-  }
-
-  // SVG do controle
-  const svg = mk('svg', { width:'540', height:'280', viewBox:'0 0 540 280', style:'max-width:94vw;display:block' })
-  svg.appendChild(mk('path', { d:'M105,88 Q70,73 50,108 Q20,158 45,218 Q60,258 90,263 Q120,268 145,238 Q165,213 185,198 L270,193 L355,198 Q375,213 395,238 Q420,268 450,263 Q480,258 495,218 Q520,158 490,108 Q470,73 435,88 L380,78 Q320,58 270,58 Q220,58 160,78Z', fill:'#1a1a2e', stroke:'#2a2a4e', 'stroke-width':'2' }))
-  // Gatilhos
-  svg.appendChild(mk('path', { d:'M58,43 Q48,13 83,8 L153,16 Q133,36 116,46Z', fill:'#222', stroke:'#333', 'stroke-width':'1.5', id:'lt-path' }))
-  svg.appendChild(mk('path', { d:'M482,43 Q492,13 457,8 L387,16 Q407,36 424,46Z', fill:'#222', stroke:'#333', 'stroke-width':'1.5', id:'rt-path' }))
-  // Analógicos
-  svg.appendChild(mk('circle', { cx:'160',cy:'208',r:'24',fill:'#111',stroke:'#333','stroke-width':'1.5' }))
-  svg.appendChild(mk('circle', { cx:'330',cy:'223',r:'20',fill:'#111',stroke:'#333','stroke-width':'1.5' }))
-  const lStick = mk('circle', { cx:'160',cy:'208',r:'12',fill:'#333',stroke:'#555','stroke-width':'1.5' })
-  const rStick = mk('circle', { cx:'330',cy:'223',r:'10',fill:'#333',stroke:'#555','stroke-width':'1.5' })
-  svg.appendChild(lStick); svg.appendChild(rStick)
-
-  let listening = null
-  const btnEls = {}
-
-  EJS_SLOTS.forEach(b => {
-    const g = mk('g', { style:'cursor:pointer' })
-    const circle = mk('circle', { cx:b.x, cy:b.y, r:b.r, fill:'rgba(255,255,255,0.04)', stroke:b.color||'#555', 'stroke-width':'1.5' })
-    const label  = mk('text', { x:b.x, y:b.y+4, 'text-anchor':'middle', fill:b.color||'#888', 'font-size':'10', 'font-weight':'700' }, b.label)
-    // Sub-texto mostrando binding customizado
-    const sub = mk('text', { x:b.x, y:b.y+b.r+9, 'text-anchor':'middle', fill:'#66c0f4', 'font-size':'8' }, '')
-    g.appendChild(circle); g.appendChild(label); g.appendChild(sub)
-    g.addEventListener('click', () => {
-      if (listening === b.slot) { listening = null; hintEl.textContent = 'Clique em um botão para remapear' }
-      else { listening = b.slot; hintEl.textContent = `Pressione o botão no controle para "${b.label}"...` }
-      refreshBtns()
-    })
-    svg.appendChild(g)
-    btnEls[b.slot] = { circle, label, sub }
-  })
-
-  function refreshBtns() {
-    const gp = [...(navigator.getGamepads?.() || [])].find(Boolean)
-    EJS_SLOTS.forEach(b => {
-      const { circle, label, sub } = btnEls[b.slot]
-      const isListen = listening === b.slot
-      const hasCustom = customBindings[b.slot] !== undefined
-      const gpIdx = customBindings[b.slot]
-      const pressed = gp?.buttons[gpIdx ?? -1]?.pressed
-      const col = isListen ? '#66c0f4' : (hasCustom ? '#66c0f4' : (b.color || (pressed ? '#fff' : '#666')))
-      circle.setAttribute('fill', isListen ? 'rgba(102,192,244,0.2)' : (pressed ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)'))
-      circle.setAttribute('stroke', isListen ? '#66c0f4' : col)
-      circle.setAttribute('stroke-width', isListen ? '2.5' : '1.5')
-      label.setAttribute('fill', col)
-      sub.textContent = hasCustom ? `GP${gpIdx}` : ''
-    })
-    // Analógicos
-    const axes = gp ? gp.axes : [0,0,0,0]
-    lStick.setAttribute('cx', 160+(axes[0]||0)*14)
-    lStick.setAttribute('cy', 208+(axes[1]||0)*14)
-    rStick.setAttribute('cx', 330+(axes[2]||0)*12)
-    rStick.setAttribute('cy', 223+(axes[3]||0)*12)
-    // Gatilhos
-    const ltV = gp?.buttons[6]?.value||0
-    const rtV = gp?.buttons[7]?.value||0
-    svg.querySelector('#lt-path')?.setAttribute('fill', `rgba(102,192,244,${ltV*0.4+0.05})`)
-    svg.querySelector('#rt-path')?.setAttribute('fill', `rgba(102,192,244,${rtV*0.4+0.05})`)
-  }
-
-  function saveAndApply() {
-    // Converte customBindings para formato EJS_Settings
-    const ejsMap = {}
-    EJS_SLOTS.forEach(b => {
-      ejsMap[b.slot] = customBindings[b.slot] !== undefined
-        ? { value2: 'BUTTON_' + (customBindings[b.slot]+1) }
-        : { value2: b.gpVal }
-    })
-    localStorage.setItem('rc_ejs_controls', JSON.stringify(ejsMap))
-  }
-
-  function pollInput() {
-    if (!document.getElementById('mappingOverlay')) return
-    refreshBtns()
-    if (listening !== null) {
-      const gp = [...(navigator.getGamepads?.() || [])].find(Boolean)
-      if (gp) {
-        for (let i = 0; i < gp.buttons.length; i++) {
-          if (gp.buttons[i].pressed) {
-            customBindings[listening] = i
-            saveAndApply()
-            hintEl.textContent = `"${EJS_SLOTS.find(b=>b.slot===listening)?.label}" → botão ${i} ✓`
-            listening = null
-            refreshBtns()
-            break
-          }
-        }
-      }
-    }
-    window._mapAnimId = requestAnimationFrame(pollInput)
-  }
-
-  // UI
-  const wrap = document.createElement('div')
-  wrap.style.cssText = 'padding:16px;max-width:600px;width:100%;text-align:center'
-
-  const title = document.createElement('div')
-  title.style.cssText = 'font-family:Rajdhani,sans-serif;font-size:22px;font-weight:700;color:#66c0f4;margin-bottom:6px'
-  title.textContent = '🎮 Mapeamento de Controle'
-
-  const hintEl = document.createElement('div')
-  hintEl.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:10px'
-  hintEl.textContent = 'Clique em um botão para remapear · GP# = botão customizado'
-
-  const svgWrap = document.createElement('div')
-  svgWrap.style.display = 'flex'
-  svgWrap.style.justifyContent = 'center'
-  svgWrap.appendChild(svg)
-
-  const btnsRow = document.createElement('div')
-  btnsRow.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:14px'
-
-  const resetBtn = document.createElement('button')
-  resetBtn.style.cssText = 'background:#333;color:#aaa;border:1px solid #444;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:12px'
-  resetBtn.textContent = '↩ Resetar'
-  resetBtn.onclick = () => { customBindings = {}; localStorage.removeItem('rc_ejs_controls'); hintEl.textContent = 'Bindings resetados.'; refreshBtns() }
-
-  const closeBtn = document.createElement('button')
-  closeBtn.style.cssText = 'background:#444;color:#fff;border:1px solid #555;border-radius:8px;padding:8px 24px;cursor:pointer;font-size:13px;font-weight:600'
-  closeBtn.textContent = 'Fechar'
-  closeBtn.onclick = () => { cancelAnimationFrame(window._mapAnimId); overlay.remove() }
-
-  btnsRow.appendChild(resetBtn); btnsRow.appendChild(closeBtn)
-  wrap.appendChild(title); wrap.appendChild(hintEl); wrap.appendChild(svgWrap); wrap.appendChild(btnsRow)
-  overlay.appendChild(wrap)
-  document.getElementById('playerWrap').appendChild(overlay)
-
-  // Fechar com B/Guide
-  const off = onGamepad((btn, type) => {
-    if (type !== 'press') return
-    if (btn === BTN.B || btn === BTN.GUIDE) { cancelAnimationFrame(window._mapAnimId); overlay.remove(); off() }
-  })
-
-  pollInput()
-}
-
-
-function closeMenu() { overlay.classList.add('hidden') }
+function openMenu()  { menuOverlay.classList.remove('hidden'); selectMenuItem(0) }
+function closeMenu() { menuOverlay.classList.add('hidden') }
 
 document.getElementById('menuBtn').addEventListener('click', openMenu)
-document.getElementById('fsMenuBtn').addEventListener('click', openMenu)
-document.getElementById('fsExitBtn').addEventListener('click', toggleFs)
 
 document.addEventListener('keydown', e => {
-  if (!overlay.classList.contains('hidden')) {
-    if (e.key === 'ArrowUp')    selectMenuItem(Math.max(0, selectedItem-1))
-    if (e.key === 'ArrowDown')  selectMenuItem(Math.min(MENU_ITEMS.length-1, selectedItem+1))
-    if (e.key === 'Enter')      MENU_ITEMS[selectedItem]?.action()
-    if (e.key === 'Escape')     closeMenu()
+  if (!menuOverlay.classList.contains('hidden')) {
+    if (e.key === 'ArrowUp')   selectMenuItem(Math.max(0, selectedItem-1))
+    if (e.key === 'ArrowDown') selectMenuItem(Math.min(MENU_ITEMS.length-1, selectedItem+1))
+    if (e.key === 'Enter')     MENU_ITEMS[selectedItem]?.action()
+    if (e.key === 'Escape')    closeMenu()
   }
 })
 
-// Gamepad
+// ── Gamepad ───────────────────────────────────────────────────────────────
 startGamepad()
 onGamepad((btn, type) => {
   if (type !== 'press') return
-
-  if (!overlay.classList.contains('hidden')) {
-    // Menu aberto
-    if (btn === BTN.UP)    selectMenuItem(Math.max(0, selectedItem-1))
-    if (btn === BTN.DOWN)  selectMenuItem(Math.min(MENU_ITEMS.length-1, selectedItem+1))
-    if (btn === BTN.A)     MENU_ITEMS[selectedItem]?.action()
+  if (!menuOverlay.classList.contains('hidden')) {
+    if (btn === BTN.UP)                     selectMenuItem(Math.max(0, selectedItem-1))
+    if (btn === BTN.DOWN)                   selectMenuItem(Math.min(MENU_ITEMS.length-1, selectedItem+1))
+    if (btn === BTN.A)                      MENU_ITEMS[selectedItem]?.action()
     if (btn === BTN.B || btn === BTN.GUIDE) closeMenu()
   } else {
-    // Jogo rodando — só Guide abre menu
     if (btn === BTN.GUIDE) openMenu()
   }
 })
