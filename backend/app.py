@@ -97,7 +97,7 @@ def _seed_defaults():
         print('[RetroCloud] Usuário admin criado: admin@retrocloud.local / admin')
 
 
-if __name__ == '__main__':
-    app = create_app()
-    app.run(host='0.0.0.0', port=5000, debug=os.getenv('FLASK_ENV') == 'development')
+app = create_app()
 
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=os.getenv('FLASK_ENV') == 'development')
