@@ -45,13 +45,30 @@ class Rom(db.Model):
     comments = db.relationship('Comment', backref='rom', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
+        # Resolve extensão correta da thumb (suporta .jpg e .png)
+        thumb = self.thumb
+        if thumb:
+            import os
+            base_path = thumb.replace('/static/', '', 1)
+            static_dir = os.path.join(os.path.dirname(__file__), 'static')
+            full = os.path.join(static_dir, base_path)
+            if not os.path.exists(full):
+                # Tenta extensão alternativa
+                stem = os.path.splitext(full)[0]
+                for ext in ('.jpg', '.png', '.jpeg', '.webp'):
+                    alt = stem + ext
+                    if os.path.exists(alt):
+                        thumb = '/static/' + os.path.splitext(base_path)[0] + ext
+                        break
+                else:
+                    thumb = None  # arquivo não existe
         return {
             'id': self.id,
             'nome': self.nome,
             'sistema': self.sistema,
             'descricao': self.descricao,
             'caminho': self.caminho,
-            'thumb': self.thumb,
+            'thumb': thumb,
             'tags': self.tags,
             'autor_id': self.autor_id,
             'data_upload': self.data_upload.isoformat()
@@ -130,4 +147,3 @@ class SystemConfig(db.Model):
             'session_time_limit': self.session_time_limit,
             'time_limit_enabled': self.time_limit_enabled
         }
-
