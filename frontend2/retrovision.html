@@ -401,23 +401,20 @@ function setupGamepad() {
     // Navegação normal
     if (btn === BTN.LEFT || btn === BTN.RIGHT) {
       if (press) {
-        navStart = performance.now()  // sempre reseta no press
-        if (btn === BTN.LEFT)  navLeft(false)
-        if (btn === BTN.RIGHT) navRight(false)
+        navStart = performance.now()
+        if (btn === BTN.LEFT)  navLeft()
+        if (btn === BTN.RIGHT) navRight()
       } else if (type === 'hold') {
         const held = navStart ? performance.now() - navStart : 0
-        if (held > 2000) {
-          // Pula página
+        if (held > 1000) {
+          // Segurou 1s+ → pula página inteira
           const f = getFiltered()
           if (btn === BTN.LEFT)  gameIdx = Math.max(0, Math.floor(gameIdx/PAGE-1)*PAGE)
           if (btn === BTN.RIGHT) gameIdx = Math.min(f.length-1, (Math.floor(gameIdx/PAGE)+1)*PAGE)
-          navStart = performance.now()  // reseta para próximo ciclo
+          navStart = performance.now()  // reseta para próxima página
           update()
-        } else {
-          // Ainda navegando 1 por 1
-          if (btn === BTN.LEFT)  navLeft(false)
-          if (btn === BTN.RIGHT) navRight(false)
         }
+        // Se held < 1000ms, não faz nada — espera acumular tempo
       }
     }
     if (press && btn === BTN.UP)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; update() }
