@@ -25,6 +25,27 @@
 <div id="playerWrap" style="flex:1;position:relative;background:#000">
   <div id="emulator-container" style="width:100%;height:calc(100vh - 48px);min-height:400px;display:block;background:#000"></div>
 
+  <!-- Tela de loading -->
+  <div id="loadingScreen" style="
+    position:absolute;inset:0;background:#000;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;
+    z-index:10;transition:opacity 0.5s ease">
+    <div id="loadThumb" style="width:180px;height:240px;border-radius:14px;overflow:hidden;background:#111;
+      box-shadow:0 0 60px rgba(102,192,244,0.3)"></div>
+    <div style="text-align:center">
+      <div id="loadTitle" style="font-family:Rajdhani,sans-serif;font-size:24px;font-weight:700;
+        color:#fff;letter-spacing:2px;margin-bottom:6px"></div>
+      <div id="loadSys" style="font-size:12px;color:rgba(255,255,255,0.4);letter-spacing:3px;
+        text-transform:uppercase;margin-bottom:20px"></div>
+      <div style="width:240px;height:2px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden">
+        <div id="loadBar" style="height:100%;background:#66c0f4;border-radius:2px;
+          width:0%;transition:width 0.1s linear"></div>
+      </div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.3);letter-spacing:4px;
+        text-transform:uppercase;margin-top:10px">A carregar...</div>
+    </div>
+  </div>
+
   <!-- Botões fullscreen -->
   <div class="fs-btns" id="fsBtns">
     <button class="fs-btn" id="fsMenuBtn">☰</button>
@@ -75,9 +96,17 @@ try {
 }
 
 document.title = `RetroCloud — ${game.nome}`
-document.getElementById('gameTitle').textContent  = game.nome
-document.getElementById('gameSys').textContent    = game.sistema?.toUpperCase() || ''
+document.getElementById('gameTitle').textContent     = game.nome
+document.getElementById('gameSys').textContent       = game.sistema?.toUpperCase() || ''
 document.getElementById('menuGameTitle').textContent = game.nome
+
+// Preenche loading screen
+document.getElementById('loadTitle').textContent = game.nome
+document.getElementById('loadSys').textContent   = game.sistema?.toUpperCase() || ''
+if (game.thumb) {
+  document.getElementById('loadThumb').innerHTML =
+    `<img src="${game.thumb}" style="width:100%;height:100%;object-fit:cover">`
+}
 
 // EmulatorJS
 const CORES = {
@@ -131,12 +160,34 @@ function initEJS() {
   `
   document.head.appendChild(st)
 
+  // Callback quando jogo começa — esconde loading screen
+  window.EJS_onGameStart = () => {
+    clearInterval(window._rcBarTimer)
+    const bar = document.getElementById('loadBar')
+    const scr = document.getElementById('loadingScreen')
+    if (bar) bar.style.width = '100%'
+    setTimeout(() => {
+      if (scr) {
+        scr.style.opacity = '0'
+        setTimeout(() => { if (scr) scr.style.display = 'none' }, 500)
+      }
+      window.dispatchEvent(new Event('resize'))
+    }, 300)
+  }
+
   const script = document.createElement('script')
   script.id  = 'emulatorjs-script'
   script.src = `https://cdn.emulatorjs.org/stable/data/loader.js?v=${Date.now()}`
-  script.onload = () => setTimeout(() => window.dispatchEvent(new Event('resize')), 500)
   document.body.appendChild(script)
 }
+
+// Anima barra de loading
+let _barPct = 0
+window._rcBarTimer = setInterval(() => {
+  _barPct = Math.min(_barPct + (_barPct < 70 ? 1.5 : 0.3), 95)
+  const bar = document.getElementById('loadBar')
+  if (bar) bar.style.width = _barPct + '%'
+}, 80)
 
 setTimeout(initEJS, 200)
 
