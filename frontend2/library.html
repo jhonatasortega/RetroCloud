@@ -45,6 +45,12 @@ import { toastErr } from '/js/ui.js'
 const PER_PAGE = 24
 let allGames = [], filtered = [], page = 1, activeSys = ''
 
+const SYS_COLORS = {
+  snes:'sys-snes', n64:'sys-n64', ps1:'sys-ps1', psx:'sys-ps1',
+  gba:'sys-gba', gbc:'sys-gbc', gb:'sys-gb',
+  megadrive:'sys-megadrive', genesis:'sys-megadrive', md:'sys-megadrive', nes:'sys-nes',
+}
+
 const user = await requireAuth()
 if (!user) throw new Error()
 
@@ -131,12 +137,6 @@ function render() {
   `
   pag.querySelector('#prevPage')?.addEventListener('click', () => { page--; render() })
   pag.querySelector('#nextPage')?.addEventListener('click', () => { page++; render() })
-}
-
-const SYS_COLORS = {
-  snes:'sys-snes', n64:'sys-n64', ps1:'sys-ps1', psx:'sys-ps1',
-  gba:'sys-gba', gbc:'sys-gbc', gb:'sys-gb',
-  megadrive:'sys-megadrive', genesis:'sys-megadrive', md:'sys-megadrive', nes:'sys-nes',
 }
 
 function gameCardHTML(g) {
