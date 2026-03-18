@@ -40,7 +40,12 @@ const CarouselCard = memo(function CarouselCard({ game, offset, meta, isCenter }
         border: isCenter ? `2px solid ${meta.glow}50` : '1px solid #ffffff08',
         background: '#111',
       }}>
-        <div style={{
+        {game.thumb ? (
+          <img src={game.thumb} alt={game.nome} loading="lazy" decoding="async"
+               onError={(e) => { e.target.style.display = 'none' }}
+               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          <div style={{
             width: '100%', height: '100%',
             background: `linear-gradient(135deg, ${meta.color}30, #000)`,
             display: 'flex', flexDirection: 'column',
@@ -49,6 +54,7 @@ const CarouselCard = memo(function CarouselCard({ game, offset, meta, isCenter }
             <span style={{ fontSize: 36 }}>{meta.emoji}</span>
             <span style={{ color: '#fff', fontSize: 11, textAlign: 'center', fontWeight: 600, lineHeight: 1.3 }}>{game.nome}</span>
           </div>
+        )}
       </div>
     </div>
   )
