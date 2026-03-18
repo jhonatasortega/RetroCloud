@@ -160,10 +160,12 @@ window.EJS_color           = '#66c0f4'
 window.EJS_backgroundColor = '#000000'
 window.EJS_language        = 'en-US'
 window.EJS_Buttons = {
-  playPause:false, restart:false, mute:false, settings:false,
-  fullscreen:false, saveState:false, loadState:false,
-  screenRecord:false, gamepad:false, cheat:false,
-  volume:false, saveSavFiles:true, contextMenu:false,
+  playPause:false, mute:false, settings:false,
+  fullscreen:false, screenRecord:false, gamepad:false, cheat:false,
+  volume:false, contextMenu:false,
+  // habilitados para que a API (saveState/loadState/restart) funcione;
+  // a barra do EJS já está oculta via CSS
+  saveState:true, loadState:true, restart:true, saveSavFiles:true,
 }
 
 // ── Save states sincronizados com o servidor ───────────────────────────────
@@ -394,8 +396,12 @@ function startListening(virtualBtn, buttonEl) {
   buttonEl.style.color = '#000'
   document.getElementById('remapHint').textContent = 'Pressione um botão no controle...'
 
+  // Aguarda soltar todos os botões antes de capturar (evita capturar o botão que abriu o modal)
+  let waitRelease = true
   rawGamepadListener = setInterval(() => {
     const gps = navigator.getGamepads?.() || []
+    const anyPressed = [...gps].some(gp => gp?.buttons.some(b => b.pressed))
+    if (waitRelease) { if (!anyPressed) waitRelease = false; return }
     for (const gp of gps) {
       if (!gp) continue
       gp.buttons.forEach((btn, i) => {

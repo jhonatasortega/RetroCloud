@@ -447,13 +447,16 @@ function setupGamepad() {
       } else if (type === 'hold') {
         const held = navStart ? performance.now() - navStart : 0
         if (held > 1000 || navPaged) {
-          // Primeiro pulo após 1s, depois repete rápido
+          // Após 1s: pula página
           navPaged = true
-          navStart = performance.now() - 100  // próximo pulo em 300ms
           const f = getFiltered()
           if (btn === BTN.LEFT)  gameIdx = Math.max(0, Math.floor(gameIdx/PAGE-1)*PAGE)
           if (btn === BTN.RIGHT) gameIdx = Math.min(f.length-1, (Math.floor(gameIdx/PAGE)+1)*PAGE)
           update()
+        } else {
+          // Antes de 1s: continua navegando 1 a 1
+          if (btn === BTN.LEFT)  navLeft()
+          if (btn === BTN.RIGHT) navRight()
         }
       }
     }
@@ -577,8 +580,11 @@ function startListeningRV(virtualBtn, labelEl) {
   if (labelEl) { labelEl.textContent = '...'; labelEl.style.background = '#66c0f440' }
   document.getElementById('rvRemapHint').textContent = 'Pressione um botão no controle...'
 
+  let waitReleaseRV = true
   rvRemapInterval = setInterval(() => {
     const gps = navigator.getGamepads?.() || []
+    const anyPressed = [...gps].some(gp => gp?.buttons.some(b => b.pressed))
+    if (waitReleaseRV) { if (!anyPressed) waitReleaseRV = false; return }
     for (const gp of gps) {
       if (!gp) continue
       gp.buttons.forEach((btn, i) => {
