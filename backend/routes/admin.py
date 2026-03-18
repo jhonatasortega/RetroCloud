@@ -1,333 +1,382 @@
-from flask import Blueprint, request, jsonify, current_app
-from models import db, User, Session, Rom, Save, Comment, SystemConfig
-from utils.jwt_helper import admin_required
-from werkzeug.utils import secure_filename
-import os
-from datetime import datetime
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RetroCloud — Admin</title>
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
 
-admin_bp = Blueprint('admin', __name__)
+<nav class="navbar">
+  <a class="navbar-brand" href="/library.html">RetroCloud</a>
+  <div class="navbar-nav">
+    <a class="nav-link" href="/library.html">Biblioteca</a>
+    <a class="nav-link active" href="/admin.html">Admin</a>
+    <button class="btn btn-secondary btn-sm" id="logoutBtn">Sair</button>
+  </div>
+</nav>
 
-ALLOWED_ROM_EXTENSIONS = {'nes', 'snes', 'smc', 'gba', 'gbc', 'gb', 'n64', 'z64', 'iso', 'bin', 'cue'}
-ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+<div class="admin-layout">
+  <div class="admin-sidebar">
+    <button class="admin-nav-item active" data-tab="roms">🎮 ROMs</button>
+    <button class="admin-nav-item" data-tab="users">👥 Usuários</button>
+    <button class="admin-nav-item" data-tab="config">⚙️ Config</button>
+  </div>
+  <div class="admin-content" id="adminContent">
+    <div class="text-muted">Carregando...</div>
+  </div>
+</div>
 
-def allowed_file(filename, allowed_extensions):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
+<script type="module">
+import { api } from '/js/api.js'
+import { requireAdmin, logout } from '/js/auth.js'
+import { toastOk, toastErr } from '/js/ui.js'
 
-@admin_bp.route('/users', methods=['GET'])
-@admin_required
-def get_users(current_user):
-    """Lista todos os usuários."""
-    users = User.query.all()
-    return jsonify({'users': [user.to_dict() for user in users]}), 200
+await requireAdmin()
+document.getElementById('logoutBtn').addEventListener('click', logout)
 
+// Tabs
+let activeTab = 'roms'
+document.querySelectorAll('.admin-nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.admin-nav-item').forEach(b => b.classList.remove('active'))
+    btn.classList.add('active')
+    activeTab = btn.dataset.tab
+    loadTab(activeTab)
+  })
+})
 
-@admin_bp.route('/users', methods=['POST'])
-@admin_required
-def create_user(current_user):
-    """Cria um novo usuário (somente admin)."""
-    data = request.get_json()
-    if not data or not data.get('nome') or not data.get('email') or not data.get('senha'):
-        return jsonify({'message': 'Dados incompletos'}), 400
+loadTab('roms')
 
-    # Verificar limite de 5 usuários
-    if User.query.count() >= 5:
-        return jsonify({'message': 'Limite de 5 usuários atingido'}), 400
+async function loadTab(tab) {
+  const el = document.getElementById('adminContent')
+  el.innerHTML = '<div class="text-muted">Carregando...</div>'
+  if (tab === 'roms')   await renderRoms(el)
+  if (tab === 'users')  await renderUsers(el)
+  if (tab === 'config') await renderConfig(el)
+}
 
-    if User.query.filter_by(email=data['email']).first():
-        return jsonify({'message': 'Email já cadastrado'}), 400
+// ── ROMs ──
+async function renderRoms(el) {
+  const data = await api.games().catch(() => ({ games: [] }))
+  const games = data.games || []
 
-    import bcrypt
-    senha_hash = bcrypt.hashpw(data['senha'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    novo_usuario = User(
-        nome=data['nome'],
-        email=data['email'],
-        senha_hash=senha_hash,
-        is_admin=data.get('is_admin', False)
-    )
-    try:
-        db.session.add(novo_usuario)
-        db.session.commit()
-        return jsonify({'message': 'Usuário criado', 'user': novo_usuario.to_dict()}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': 'Erro ao criar usuário', 'error': str(e)}), 500
+  // Filtro de sistema
+  const systems = [...new Set(games.map(g => g.sistema?.toLowerCase()).filter(Boolean))]
+  let activeSys = '', searchQ = ''
 
+  function filtered() {
+    return games.filter(g => {
+      const ms = !activeSys || g.sistema?.toLowerCase() === activeSys
+      const mq = !searchQ   || g.nome?.toLowerCase().includes(searchQ.toLowerCase())
+      return ms && mq
+    })
+  }
 
-@admin_bp.route('/shutdown', methods=['POST'])
-@admin_required
-def shutdown_server(current_user):
-    """Desliga o servidor (envia SIGTERM para o processo)."""
-    import os, signal
-    os.kill(os.getpid(), signal.SIGTERM)
-    return jsonify({'message': 'Servidor encerrando...'}), 200
+  function renderTable() {
+    const list = filtered()
+    tableBody.innerHTML = list.map(g => `
+      <tr>
+        <td>${esc(g.nome)}</td>
+        <td><span class="sys-badge sys-${g.sistema?.toLowerCase()}" style="position:static;font-size:11px;padding:2px 8px">${esc(g.sistema?.toUpperCase())}</span></td>
+        <td>${g.thumb ? `<img src="${g.thumb}" class="thumb-preview" loading="lazy">` : '—'}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm fetch-btn" data-id="${g.id}">🔍 Buscar capa</button>
+          <button class="btn btn-danger btn-sm del-btn" data-id="${g.id}">Deletar</button>
+        </td>
+      </tr>
+    `).join('')
 
-@admin_bp.route('/sessions', methods=['GET'])
-@admin_required
-def get_active_sessions(current_user):
-    """Lista todas as sessões ativas."""
-    sessions = Session.query.filter_by(ativo=True).all()
-    sessions_data = []
-    
-    for session in sessions:
-        user = User.query.get(session.user_id)
-        tempo_sessao = datetime.utcnow() - session.inicio
-        sessions_data.append({
-            **session.to_dict(),
-            'user_nome': user.nome if user else 'Desconhecido',
-            'tempo_sessao': str(tempo_sessao).split('.')[0]
-        })
-    
-    return jsonify({'sessions': sessions_data}), 200
+    tableBody.querySelectorAll('.fetch-btn').forEach(b => {
+      b.addEventListener('click', async () => {
+        b.disabled = true; b.textContent = '...'
+        try {
+          await api.fetchThumb(b.dataset.id)
+          toastOk('Capa encontrada!')
+          loadTab('roms')
+        } catch(e) {
+          // Se não encontrou, mostra campo para nome alternativo
+          const row = b.closest('tr')
+          const nomejogo = row.querySelector('td:first-child').textContent.trim()
+          const input = document.createElement('input')
+          input.className = 'input'
+          input.style.cssText = 'width:180px;font-size:12px;padding:4px 8px;display:inline-block;margin-left:6px'
+          input.placeholder = 'Nome alternativo...'
+          input.value = nomejogo
+          const tryBtn = document.createElement('button')
+          tryBtn.className = 'btn btn-primary btn-sm'
+          tryBtn.style.marginLeft = '4px'
+          tryBtn.textContent = '→'
+          tryBtn.addEventListener('click', async () => {
+            tryBtn.disabled = true
+            try {
+              await api.fetchThumbNome(b.dataset.id, input.value)
+              toastOk('Capa encontrada!')
+              loadTab('roms')
+            } catch(e2) {
+              toastErr('Não encontrado: ' + input.value)
+              tryBtn.disabled = false
+            }
+          })
+          b.parentNode.appendChild(input)
+          b.parentNode.appendChild(tryBtn)
+          input.focus(); input.select()
+        }
+        b.disabled = false; b.textContent = '🔍 Buscar capa'
+      })
+    })
 
-@admin_bp.route('/sessions/<int:session_id>/terminate', methods=['POST'])
-@admin_required
-def terminate_session(current_user, session_id):
-    """Encerra uma sessão específica."""
-    session = Session.query.get(session_id)
-    if not session:
-        return jsonify({'message': 'Sessão não encontrada'}), 404
-    
-    session.ativo = False
-    db.session.commit()
-    return jsonify({'message': 'Sessão encerrada com sucesso'}), 200
+    tableBody.querySelectorAll('.del-btn').forEach(b => {
+      b.addEventListener('click', async () => {
+        if (!confirm('Deletar esta ROM?')) return
+        try {
+          await api.deleteRom(b.dataset.id)
+          toastOk('ROM deletada')
+          loadTab('roms')
+        } catch(e) { toastErr(e.message) }
+      })
+    })
+  }
 
-@admin_bp.route('/config', methods=['GET'])
-@admin_required
-def get_config(current_user):
-    """Retorna a configuração do sistema."""
-    config = SystemConfig.query.first()
-    if not config:
-        return jsonify({'message': 'Configuração não encontrada'}), 404
-    
-    return jsonify({'config': config.to_dict()}), 200
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 class="font-head" style="font-size:22px">ROMs <span class="text-muted text-sm">(${games.length})</span></h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" id="fetchAllBtn">🔍 Buscar capas sem thumb</button>
+        <button class="btn btn-secondary btn-sm" id="clearSysBtn">🗑 Limpar thumbs do sistema</button>
+        <button class="btn btn-primary btn-sm" id="uploadBtn">+ Upload ROM</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <input class="input" id="romSearch" placeholder="Buscar..." style="max-width:260px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="romSysFilter">
+        <button class="sys-btn active" data-sys="">Todos</button>
+        ${systems.map(s => `<button class="sys-btn" data-sys="${s}">${s.toUpperCase()}</button>`).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <table class="admin-table">
+        <thead><tr><th>Nome</th><th>Sistema</th><th>Capa</th><th>Ações</th></tr></thead>
+        <tbody id="romsBody"></tbody>
+      </table>
+    </div>
 
-@admin_bp.route('/config', methods=['PUT'])
-@admin_required
-def update_config(current_user):
-    """Atualiza a configuração do sistema."""
-    data = request.get_json()
-    config = SystemConfig.query.first()
-    
-    if not config:
-        return jsonify({'message': 'Configuração não encontrada'}), 404
-    
-    if 'max_sessions' in data:
-        config.max_sessions = data['max_sessions']
-    
-    if 'session_time_limit' in data:
-        config.session_time_limit = data['session_time_limit']
-    
-    if 'time_limit_enabled' in data:
-        config.time_limit_enabled = data['time_limit_enabled']
-    
-    try:
-        db.session.commit()
-        return jsonify({
-            'message': 'Configuração atualizada com sucesso',
-            'config': config.to_dict()
-        }), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': 'Erro ao atualizar configuração', 'error': str(e)}), 500
+    <!-- Upload modal hidden -->
+    <div id="uploadModal" style="display:none">
+      <div class="modal-overlay" id="uploadOverlay">
+        <div class="modal">
+          <div class="modal-header">
+            <span class="modal-title">Upload de ROM</span>
+            <button class="modal-close" id="closeUpload">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group mb-3">
+              <label class="form-label">Sistema</label>
+              <select class="input" id="uploadSys">
+                <option value="snes">SNES</option>
+                <option value="n64">N64</option>
+                <option value="ps1">PS1</option>
+                <option value="gba">GBA</option>
+                <option value="megadrive">Mega Drive</option>
+                <option value="nes">NES</option>
+                <option value="gbc">GBC</option>
+                <option value="gb">GB</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Arquivo(s) ROM</label>
+              <input type="file" class="input" id="uploadFile" multiple>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="cancelUpload">Cancelar</button>
+            <button class="btn btn-primary" id="doUpload">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
 
-@admin_bp.route('/roms/<int:rom_id>/thumb', methods=['POST'])
-@admin_required
-def upload_thumb(current_user, rom_id):
-    """Upload manual de thumbnail para uma ROM."""
-    rom = Rom.query.get(rom_id)
-    if not rom:
-        return jsonify({'message': 'ROM não encontrada'}), 404
+  const tableBody = el.querySelector('#romsBody')
+  renderTable()
 
-    thumb_file = request.files.get('thumb')
-    if not thumb_file:
-        return jsonify({'message': 'Arquivo não fornecido'}), 400
+  // Busca
+  el.querySelector('#romSearch').addEventListener('input', e => {
+    searchQ = e.target.value; renderTable()
+  })
+  el.querySelector('#romSysFilter').addEventListener('click', e => {
+    const b = e.target.closest('.sys-btn')
+    if (!b) return
+    el.querySelectorAll('.sys-btn').forEach(x => x.classList.remove('active'))
+    b.classList.add('active')
+    activeSys = b.dataset.sys
+    renderTable()
+  })
 
-    if not allowed_file(thumb_file.filename, ALLOWED_IMAGE_EXTENSIONS):
-        return jsonify({'message': 'Formato não permitido. Use: png, jpg, gif, webp'}), 400
+  // Fetch all thumbs sem capa
+  el.querySelector('#fetchAllBtn').addEventListener('click', async () => {
+    if (!confirm('Buscar capas para ROMs sem capa? Pode demorar.')) return
+    const btn = el.querySelector('#fetchAllBtn')
+    btn.disabled = true; btn.textContent = 'Buscando...'
+    try {
+      const r = await api.fetchAllThumbs()
+      toastOk(`${r.atualizadas} capas encontradas, ${r.falhas} falhas`)
+      loadTab('roms')
+    } catch(e) { toastErr(e.message) }
+    btn.disabled = false; btn.textContent = '🔍 Buscar capas sem thumb'
+  })
 
-    thumb_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'thumbs')
-    os.makedirs(thumb_dir, exist_ok=True)
-    ext = thumb_file.filename.rsplit('.', 1)[1].lower()
-    filename = f'rom_{rom_id}.{ext}'
-    full_path = os.path.join(thumb_dir, filename)
-    thumb_file.save(full_path)
+  // Limpar thumbs do sistema ativo e rebuscar
+  el.querySelector('#clearSysBtn').addEventListener('click', async () => {
+    const sys = activeSys || null
+    const msg = sys ? `Limpar todas as thumbs de ${sys.toUpperCase()} e rebuscar?` : 'Limpar TODAS as thumbs e rebuscar?'
+    if (!confirm(msg)) return
+    const btn = el.querySelector('#clearSysBtn')
+    btn.disabled = true; btn.textContent = 'Limpando...'
+    try {
+      const r = await api.clearThumbs(sys)
+      toastOk(r.message)
+      // Rebusca automaticamente
+      btn.textContent = 'Rebuscando...'
+      const r2 = await api.fetchAllThumbs()
+      toastOk(`${r2.atualizadas} novas capas encontradas`)
+      loadTab('roms')
+    } catch(e) { toastErr(e.message) }
+    btn.disabled = false; btn.textContent = '🗑 Limpar thumbs do sistema'
+  })
 
-    rom.thumb = f'/static/uploads/thumbs/{filename}'
-    db.session.commit()
-    return jsonify({'message': 'Capa atualizada!', 'thumb': rom.thumb}), 200
+  // Upload
+  const uploadModal = el.querySelector('#uploadModal')
+  el.querySelector('#uploadBtn').addEventListener('click', () => { uploadModal.style.display = '' })
+  el.querySelector('#closeUpload').addEventListener('click', () => { uploadModal.style.display = 'none' })
+  el.querySelector('#cancelUpload').addEventListener('click', () => { uploadModal.style.display = 'none' })
+  el.querySelector('#doUpload').addEventListener('click', async () => {
+    const files = el.querySelector('#uploadFile').files
+    const sys   = el.querySelector('#uploadSys').value
+    if (!files.length) return
+    const btn = el.querySelector('#doUpload')
+    btn.disabled = true; btn.textContent = 'Enviando...'
+    let ok = 0, fail = 0
+    for (const f of files) {
+      const fd = new FormData()
+      fd.append('rom', f); fd.append('sistema', sys)
+      try { await api.uploadRom(fd); ok++ }
+      catch { fail++ }
+    }
+    btn.disabled = false; btn.textContent = 'Enviar'
+    uploadModal.style.display = 'none'
+    if (ok) toastOk(`${ok} ROM(s) enviada(s)`)
+    if (fail) toastErr(`${fail} falha(s)`)
+    loadTab('roms')
+  })
+}
 
+// ── Usuários ──
+async function renderUsers(el) {
+  const data = await api.adminUsers().catch(() => ({ users: [] }))
+  const users = data.users || []
 
-@admin_bp.route('/roms/upload', methods=['POST'])
-@admin_required
-def upload_rom(current_user):
-    """Faz upload de uma nova ROM."""
-    # Verificar se os arquivos foram enviados
-    if 'rom' not in request.files:
-        return jsonify({'message': 'Arquivo ROM não fornecido'}), 400
-    
-    rom_file = request.files['rom']
-    thumb_file = request.files.get('thumb')
-    
-    if rom_file.filename == '':
-        return jsonify({'message': 'Nenhum arquivo selecionado'}), 400
-    
-    if not allowed_file(rom_file.filename, ALLOWED_ROM_EXTENSIONS):
-        return jsonify({'message': 'Tipo de arquivo ROM não permitido'}), 400
-    
-    # Obter dados do formulário
-    nome = request.form.get('nome')
-    sistema = request.form.get('sistema')
-    descricao = request.form.get('descricao', '')
-    tags = request.form.get('tags', '')
-    
-    if not nome or not sistema:
-        return jsonify({'message': 'Nome e sistema são obrigatórios'}), 400
-    
-    # Salvar ROM
-    rom_filename = secure_filename(rom_file.filename)
-    rom_dir = os.path.join('/emulatorjs/roms', sistema)
-    os.makedirs(rom_dir, exist_ok=True)
-    rom_path = os.path.join(rom_dir, rom_filename)
-    rom_file.save(rom_path)
-    
-    # Salvar thumbnail se fornecido
-    thumb_path = None
-    if thumb_file and allowed_file(thumb_file.filename, ALLOWED_IMAGE_EXTENSIONS):
-        thumb_filename = secure_filename(thumb_file.filename)
-        thumb_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'thumbs')
-        os.makedirs(thumb_dir, exist_ok=True)
-        thumb_path = os.path.join(thumb_dir, thumb_filename)
-        thumb_file.save(thumb_path)
-        thumb_path = f'/static/uploads/thumbs/{thumb_filename}'
-    
-    # Criar registro no banco
-    nova_rom = Rom(
-        nome=nome,
-        sistema=sistema,
-        descricao=descricao,
-        caminho=rom_path,
-        thumb=thumb_path,
-        tags=tags,
-        autor_id=current_user.id
-    )
-    
-    try:
-        db.session.add(nova_rom)
-        db.session.commit()
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 class="font-head" style="font-size:22px">Usuários <span class="text-muted text-sm">(${users.length}/5)</span></h2>
+      <button class="btn btn-primary btn-sm" id="newUserBtn">+ Novo usuário</button>
+    </div>
+    <div class="card">
+      <table class="admin-table">
+        <thead><tr><th>Nome</th><th>Email</th><th>Admin</th><th>Ações</th></tr></thead>
+        <tbody>${users.map(u => `
+          <tr>
+            <td>${esc(u.nome)}</td>
+            <td>${esc(u.email)}</td>
+            <td>${u.is_admin ? '✓' : '—'}</td>
+            <td>${!u.is_admin ? `<button class="btn btn-danger btn-sm del-user" data-id="${u.id}">Deletar</button>` : ''}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div id="newUserForm" style="display:none;margin-top:20px">
+      <div class="card">
+        <div class="card-header">Novo usuário</div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+          <input class="input" id="newNome"  placeholder="Nome">
+          <input class="input" id="newEmail" placeholder="Email" type="email">
+          <input class="input" id="newSenha" placeholder="Senha" type="password">
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" id="createUser">Criar</button>
+            <button class="btn btn-secondary" id="cancelUser">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
 
-        # Auto-thumb desativado — use o botão manual no admin para buscar capas
+  el.querySelector('#newUserBtn').addEventListener('click', () => {
+    el.querySelector('#newUserForm').style.display = ''
+  })
+  el.querySelector('#cancelUser').addEventListener('click', () => {
+    el.querySelector('#newUserForm').style.display = 'none'
+  })
+  el.querySelector('#createUser').addEventListener('click', async () => {
+    const nome  = el.querySelector('#newNome').value.trim()
+    const email = el.querySelector('#newEmail').value.trim()
+    const senha = el.querySelector('#newSenha').value
+    if (!nome || !email || !senha) return toastErr('Preencha todos os campos')
+    try {
+      await api.adminCreateUser({ nome, email, senha })
+      toastOk('Usuário criado')
+      loadTab('users')
+    } catch(e) { toastErr(e.message) }
+  })
 
-        return jsonify({
-            'message': 'ROM enviada com sucesso',
-            'rom': nova_rom.to_dict()
-        }), 201
-    except Exception as e:
-        db.session.rollback()
-        # Tentar remover arquivos salvos em caso de erro
-        if os.path.exists(rom_path):
-            os.remove(rom_path)
-        if thumb_path and os.path.exists(thumb_path):
-            os.remove(thumb_path)
-        return jsonify({'message': 'Erro ao salvar ROM', 'error': str(e)}), 500
+  el.querySelectorAll('.del-user').forEach(b => {
+    b.addEventListener('click', async () => {
+      if (!confirm('Deletar usuário?')) return
+      try { await api.adminDeleteUser(b.dataset.id); toastOk('Deletado'); loadTab('users') }
+      catch(e) { toastErr(e.message) }
+    })
+  })
+}
 
-@admin_bp.route('/roms/<int:rom_id>', methods=['DELETE'])
-@admin_required
-def delete_rom(current_user, rom_id):
-    """Deleta uma ROM."""
-    rom = Rom.query.get(rom_id)
-    if not rom:
-        return jsonify({'message': 'ROM não encontrada'}), 404
-    
-    # Remover arquivos
-    try:
-        if os.path.exists(rom.caminho):
-            os.remove(rom.caminho)
-        if rom.thumb and os.path.exists(rom.thumb):
-            os.remove(rom.thumb)
-    except Exception as e:
-        pass  # Continuar mesmo se não conseguir remover os arquivos
-    
-    # Remover do banco (cascade vai remover saves e comentários)
-    try:
-        db.session.delete(rom)
-        db.session.commit()
-        return jsonify({'message': 'ROM deletada com sucesso'}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': 'Erro ao deletar ROM', 'error': str(e)}), 500
+// ── Config ──
+async function renderConfig(el) {
+  el.innerHTML = `
+    <h2 class="font-head" style="font-size:22px;margin-bottom:20px">Configurações</h2>
+    <div class="card" style="max-width:480px">
+      <div class="card-header">Alterar senha</div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+        <input class="input" id="senhaAtual" type="password" placeholder="Senha atual">
+        <input class="input" id="senhaNova"  type="password" placeholder="Nova senha">
+        <button class="btn btn-primary" id="changePassBtn" style="align-self:flex-start">Alterar senha</button>
+      </div>
+    </div>
+    <div class="card" style="max-width:480px;margin-top:16px">
+      <div class="card-header">Sistema</div>
+      <div class="card-body">
+        <button class="btn btn-danger" id="shutdownBtn">⏻ Desligar servidor</button>
+      </div>
+    </div>
+  `
 
-@admin_bp.route('/saves', methods=['GET'])
-@admin_required
-def get_saves(current_user):
-    """Lista todos os saves."""
-    user_id = request.args.get('user_id', type=int)
-    rom_id = request.args.get('rom_id', type=int)
-    
-    query = Save.query
-    
-    if user_id:
-        query = query.filter_by(user_id=user_id)
-    
-    if rom_id:
-        query = query.filter_by(rom_id=rom_id)
-    
-    saves = query.all()
-    saves_data = []
-    
-    for save in saves:
-        user = User.query.get(save.user_id)
-        rom = Rom.query.get(save.rom_id)
-        saves_data.append({
-            **save.to_dict(),
-            'user_nome': user.nome if user else 'Desconhecido',
-            'rom_nome': rom.nome if rom else 'Desconhecido'
-        })
-    
-    return jsonify({'saves': saves_data}), 200
+  el.querySelector('#changePassBtn').addEventListener('click', async () => {
+    const atual = el.querySelector('#senhaAtual').value
+    const nova  = el.querySelector('#senhaNova').value
+    if (!atual || !nova) return toastErr('Preencha os campos')
+    try {
+      await api.changePass(atual, nova)
+      toastOk('Senha alterada')
+    } catch(e) { toastErr(e.message) }
+  })
 
-@admin_bp.route('/saves/<int:save_id>', methods=['DELETE'])
-@admin_required
-def delete_save(current_user, save_id):
-    """Deleta um save."""
-    save = Save.query.get(save_id)
-    if not save:
-        return jsonify({'message': 'Save não encontrado'}), 404
-    
-    # Remover arquivo
-    try:
-        if os.path.exists(save.caminho):
-            os.remove(save.caminho)
-    except Exception as e:
-        pass
-    
-    try:
-        db.session.delete(save)
-        db.session.commit()
-        return jsonify({'message': 'Save deletado com sucesso'}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': 'Erro ao deletar save', 'error': str(e)}), 500
+  el.querySelector('#shutdownBtn').addEventListener('click', async () => {
+    if (!confirm('Desligar o servidor?')) return
+    try { await api.shutdown() } catch {}
+  })
+}
 
-@admin_bp.route('/comments/<int:comment_id>', methods=['DELETE'])
-@admin_required
-def delete_comment(current_user, comment_id):
-    """Deleta um comentário."""
-    comment = Comment.query.get(comment_id)
-    if not comment:
-        return jsonify({'message': 'Comentário não encontrado'}), 404
-    
-    try:
-        db.session.delete(comment)
-        db.session.commit()
-        return jsonify({'message': 'Comentário deletado com sucesso'}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': 'Erro ao deletar comentário', 'error': str(e)}), 500
-
-@admin_bp.route('/restart', methods=['POST'])
-@admin_required
-def restart_server(current_user):
-    """Reinicia o servidor (simulado)."""
-    # Em produção, isso poderia executar um comando Docker
-    return jsonify({'message': 'Comando de reinicialização enviado'}), 200
-
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+}
+</script>
+</body>
+</html>
