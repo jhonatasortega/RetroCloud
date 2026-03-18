@@ -88,8 +88,8 @@ const SYS_META = {
   genesis:   { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', logo:'/img/systems/megadrive.svg' },
   md:        { label:'Mega Drive',      color:'#0f766e', glow:'#14b8a6', logo:'/img/systems/megadrive.svg' },
   gba:       { label:'Game Boy Advance',color:'#b45309', glow:'#f59e0b', logo:'/img/systems/gba.svg' },
-  gbc:       { label:'Game Boy Color',  color:'#15803d', glow:'#22c55e', logo:'/img/systems/gba.svg' },
-  gb:        { label:'Game Boy',        color:'#374151', glow:'#9ca3af', logo:'/img/systems/gba.svg' },
+  gbc:       { label:'Game Boy Color',  color:'#15803d', glow:'#22c55e', logo:'/img/systems/gbc.svg' },
+  gb:        { label:'Game Boy',        color:'#374151', glow:'#9ca3af', logo:'/img/systems/gb.svg' },
   nes:       { label:'NES',             color:'#9f1239', glow:'#f43f5e', logo:'/img/systems/nes.svg' },
 }
 const DEF_META = { label:'Outros', color:'#4b5563', glow:'#9ca3af', logo:null }
@@ -176,9 +176,9 @@ function renderCarousel() {
   const meta = getMeta()
   const safe = Math.min(gameIdx, Math.max(0, filtered.length-1))
   const wrap = document.getElementById('rvCards')
+  if (!wrap) return
 
-  // Reconstrói só os cards visíveis
-  const html = []
+  const frags = []
   for (let i = safe-RANGE; i <= safe+RANGE; i++) {
     if (i < 0 || i >= filtered.length) continue
     const offset = i - safe
@@ -193,34 +193,48 @@ function renderCarousel() {
     const ry = offset * -12
     const op = center ? 1 : Math.max(0.25, 1-abs*0.25)
     const shadow = center
-      ? `0 0 50px ${meta.glow}60,0 20px 50px rgba(0,0,0,0.9)`
+      ? '0 0 50px ' + meta.glow + '60,0 20px 50px rgba(0,0,0,0.9)'
       : '0 8px 30px rgba(0,0,0,0.7)'
-    const border = center ? `2px solid ${meta.glow}50` : '1px solid #ffffff08'
-    const thumb = g.thumb
-      ? `<img src="${g.thumb}" alt="" loading="lazy" decoding="async"
-              onerror="this.style.display='none'"
-              style="width:100%;height:100%;object-fit:cover;display:block">`
-      : `<div class="rv-card-placeholder" style="background:linear-gradient(135deg,${meta.color}30,#000)">
-          <span>${meta.emoji||'🎮'}</span><span>${esc(g.nome)}</span></div>`
-    html.push(`<div class="rv-card" data-idx="${i}" style="
-      transform:translateX(${tx}px) translateZ(${tz}px) rotateY(${ry}deg) scale(${scale});
-      opacity:${op};z-index:${10-abs}">
-      <div class="rv-card-inner" style="width:${w}px;height:${h}px;box-shadow:${shadow};border:${border}">
-        ${thumb}
-      </div>
-    </div>`)
-  }
-  wrap.innerHTML = html.join('')
+    const border = center ? '2px solid ' + meta.glow + '50' : '1px solid #ffffff08'
 
-  wrap.querySelectorAll('.rv-card').forEach(c => {
-    c.addEventListener('click', () => {
-      const idx = +c.dataset.idx
+    const div = document.createElement('div')
+    div.className = 'rv-card'
+    div.dataset.idx = i
+    div.style.cssText = 'transform:translateX(' + tx + 'px) translateZ(' + tz + 'px) rotateY(' + ry + 'deg) scale(' + scale + ');opacity:' + op + ';z-index:' + (10-abs)
+
+    const inner = document.createElement('div')
+    inner.className = 'rv-card-inner'
+    inner.style.cssText = 'width:' + w + 'px;height:' + h + 'px;box-shadow:' + shadow + ';border:' + border
+
+    if (g.thumb) {
+      const img = document.createElement('img')
+      img.src = g.thumb
+      img.alt = ''
+      img.loading = 'lazy'
+      img.decoding = 'async'
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block'
+      img.onerror = function() { this.style.display='none' }
+      inner.appendChild(img)
+    } else {
+      const ph = document.createElement('div')
+      ph.className = 'rv-card-placeholder'
+      ph.style.background = 'linear-gradient(135deg,' + meta.color + '30,#000)'
+      ph.innerHTML = '<span style="font-size:36px">' + (meta.emoji||'🎮') + '</span><span>' + esc(g.nome) + '</span>'
+      inner.appendChild(ph)
+    }
+
+    div.appendChild(inner)
+    div.addEventListener('click', function() {
+      const idx = +this.dataset.idx
       if (idx === safe) launchGame()
       else { gameIdx = idx; update() }
     })
-  })
-}
+    frags.push(div)
+  }
 
+  wrap.innerHTML = ''
+  frags.forEach(f => wrap.appendChild(f))
+}
 
 function renderInfo() {
   const meta = getMeta()

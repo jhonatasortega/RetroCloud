@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 70">
+  <text y="48" font-family="'Arial Black',Arial,sans-serif" font-size="28" font-weight="900" fill="white">Game Boy</text>
+  <text x="0" y="68" font-family="'Arial Black',Arial,sans-serif" font-size="24" font-weight="700">
+    <tspan fill="#e44">C</tspan><tspan fill="#fa0">O</tspan><tspan fill="#2a4">L</tspan><tspan fill="#44f">O</tspan><tspan fill="#a2a">R</tspan>
+  </text>
+</svg>

@@ -96,10 +96,14 @@ async function renderRoms(el) {
           toastOk('Capa encontrada!')
           loadTab('roms')
         } catch(e) {
-          // Se não encontrou, mostra campo para nome alternativo
+          // Se não encontrou, mostra campo para nome alternativo (evita duplicar)
+          if (b.parentNode.querySelector('.rename-input')) {
+            toastErr('Não encontrado. Tente outro nome no campo.')
+            b.parentNode.querySelector('.rename-input').focus()
+          } else {
           const nomejogo = b.dataset.nome || ''
           const input = document.createElement('input')
-          input.className = 'input'
+          input.className = 'input rename-input'
           input.style.cssText = 'width:180px;font-size:12px;padding:4px 8px;display:inline-block;margin-left:6px'
           input.placeholder = 'Nome alternativo...'
           input.value = nomejogo
@@ -123,6 +127,7 @@ async function renderRoms(el) {
           b.parentNode.appendChild(input)
           b.parentNode.appendChild(tryBtn)
           input.focus(); input.select()
+          }
         }
         b.disabled = false; b.textContent = '🔍 Buscar capa'
       })

@@ -1,3 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80">
-  <text x="10" y="60" font-family="Arial Black,sans-serif" font-size="52" font-weight="900" fill="white" letter-spacing="-2">SNES</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60">
+  <text y="52" font-family="'Arial Black',Arial,sans-serif" font-size="56" font-weight="900" letter-spacing="-3">
+    <tspan fill="#d4001a">S</tspan><tspan fill="#333" dx="-1">N</tspan><tspan fill="#333" dx="-1">E</tspan><tspan fill="#333" dx="-1">S</tspan>
+  </text>
 </svg>

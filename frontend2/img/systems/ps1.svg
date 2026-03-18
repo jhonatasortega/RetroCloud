@@ -1,3 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80">
-  <text x="5" y="55" font-family="Arial,sans-serif" font-size="32" font-weight="700" fill="white">PlayStation</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 70">
+  <text y="52" font-family="'Arial',sans-serif" font-size="42" font-weight="400" letter-spacing="-1">
+    <tspan fill="#003087">P</tspan><tspan fill="#003087">l</tspan><tspan fill="#003087">a</tspan><tspan fill="#003087">y</tspan><tspan fill="#003087">S</tspan><tspan fill="#003087">t</tspan><tspan fill="#cc0001">a</tspan><tspan fill="#cc0001">t</tspan><tspan fill="#cc0001">i</tspan><tspan fill="#cc0001">o</tspan><tspan fill="#cc0001">n</tspan>
+  </text>
 </svg>
