@@ -221,8 +221,17 @@ document.getElementById('fsBtns').addEventListener('mousemove', showFsBtns)
 document.getElementById('fsBtns').addEventListener('touchstart', showFsBtns)
 document.getElementById('playerWrap').addEventListener('mousemove', () => { if (isFs) showFsBtns() })
 
-// Entra em fullscreen automaticamente sempre
-setTimeout(toggleFs, 800)
+// Mostra botão de fullscreen proeminente no centro
+const fsPrompt = document.createElement('div')
+fsPrompt.id = 'fsPrompt'
+fsPrompt.style.cssText = `position:absolute;inset:0;z-index:20;display:flex;
+  align-items:center;justify-content:center;background:rgba(0,0,0,0.5)`
+fsPrompt.innerHTML = `<button onclick="document.getElementById('fsPrompt').remove();toggleFs()"
+  style="background:#66c0f4;color:#000;border:none;border-radius:12px;
+  padding:16px 40px;font-size:18px;font-weight:700;cursor:pointer">
+  ⊞ Tela Cheia
+</button>`
+document.getElementById('playerWrap').appendChild(fsPrompt)
 
 // Menu
 const MENU_ITEMS = [
