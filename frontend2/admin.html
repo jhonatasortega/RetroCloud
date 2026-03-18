@@ -83,6 +83,9 @@ async function renderRoms(el) {
         <td>${g.thumb ? `<img src="${g.thumb}" class="thumb-preview" loading="lazy">` : '—'}</td>
         <td>
           <button class="btn btn-secondary btn-sm fetch-btn" data-id="${g.id}" data-nome="${esc(g.nome)}">🔍 Buscar capa</button>
+          <label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0" title="Enviar capa manualmente">
+            📎 <input type="file" accept="image/*" style="display:none" class="upload-thumb-input" data-id="${g.id}">
+          </label>
           <button class="btn btn-danger btn-sm del-btn" data-id="${g.id}">Deletar</button>
         </td>
       </tr>
@@ -130,6 +133,26 @@ async function renderRoms(el) {
           }
         }
         b.disabled = false; b.textContent = '🔍 Buscar capa'
+      })
+    })
+
+    // Upload manual de thumb
+    tableBody.querySelectorAll('.upload-thumb-input').forEach(input => {
+      input.addEventListener('change', async () => {
+        if (!input.files[0]) return
+        const fd = new FormData()
+        fd.append('thumb', input.files[0])
+        try {
+          const token = localStorage.getItem('rc_token')
+          const res = await fetch(`/api/admin/roms/${input.dataset.id}/thumb`, {
+            method: 'POST',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: fd
+          })
+          const d = await res.json()
+          if (res.ok) { toastOk('Capa enviada!'); loadTab('roms') }
+          else toastErr(d.message || 'Erro ao enviar')
+        } catch(e) { toastErr(e.message) }
       })
     })
 

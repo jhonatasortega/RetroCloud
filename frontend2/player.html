@@ -137,14 +137,20 @@ function initEJS() {
 
   ejsLoaded = true
 
-  window.EJS_player          = '#emulator-container'
-  window.EJS_core            = core
-  window.EJS_gameUrl         = rom
-  window.EJS_pathtodata      = 'https://cdn.emulatorjs.org/stable/data/'
-  window.EJS_startOnLoaded   = true
-  window.EJS_color           = '#66c0f4'
-  window.EJS_backgroundColor = '#000000'
-  window.EJS_language        = 'en-US'
+  window.EJS_player             = '#emulator-container'
+  window.EJS_core               = core
+  window.EJS_gameUrl            = rom
+  window.EJS_pathtodata         = 'https://cdn.emulatorjs.org/stable/data/'
+  window.EJS_startOnLoaded      = true
+  window.EJS_fullscreenOnLoaded = true   // fullscreen oficial EJS
+  window.EJS_color              = '#66c0f4'
+  window.EJS_backgroundColor    = '#000000'
+  window.EJS_language           = 'en-US'
+  // Carrega mapeamento salvo
+  try {
+    const saved = localStorage.getItem('rc_ejs_controls')
+    if (saved) window.EJS_Settings = { defaultControllers: JSON.parse(saved) }
+  } catch {}
   window.EJS_Buttons = {
     playPause:false, restart:false, mute:false, settings:false,
     fullscreen:false, saveState:false, loadState:false,
@@ -284,102 +290,91 @@ function selectMenuItem(i) {
 function openMenu()  { overlay.classList.remove('hidden'); selectMenuItem(0) }
 
 // ── Mapeamento de controle ────────────────────────────────────────────────
+// EJS control slots → descrição do botão no controle
+// value2 = identificador EJS do gamepad
+const EJS_SLOTS = [
+  { slot:0,  label:'B',    gpVal:'BUTTON_2',             x:422, y:189, r:16, color:'#f44336' },
+  { slot:1,  label:'Y',    gpVal:'BUTTON_4',             x:398, y:213, r:16, color:'#ff9800' },
+  { slot:2,  label:'SEL',  gpVal:'SELECT',               x:210, y:172, r:15 },
+  { slot:3,  label:'STA',  gpVal:'START',                x:280, y:172, r:15 },
+  { slot:4,  label:'↑',    gpVal:'DPAD_UP',              x:118, y:148, r:13 },
+  { slot:5,  label:'↓',    gpVal:'DPAD_DOWN',            x:118, y:190, r:13 },
+  { slot:6,  label:'←',    gpVal:'DPAD_LEFT',            x: 96, y:169, r:13 },
+  { slot:7,  label:'→',    gpVal:'DPAD_RIGHT',           x:140, y:169, r:13 },
+  { slot:8,  label:'A',    gpVal:'BUTTON_1',             x:398, y:165, r:16, color:'#4caf50' },
+  { slot:9,  label:'X',    gpVal:'BUTTON_3',             x:374, y:189, r:16, color:'#2196f3' },
+  { slot:10, label:'LB',   gpVal:'LEFT_TOP_SHOULDER',    x: 90, y: 65, r:17 },
+  { slot:11, label:'RB',   gpVal:'RIGHT_TOP_SHOULDER',   x:450, y: 65, r:17 },
+  { slot:12, label:'LT',   gpVal:'LEFT_BOTTOM_SHOULDER', x:105, y: 32, r:14 },
+  { slot:13, label:'RT',   gpVal:'RIGHT_BOTTOM_SHOULDER',x:435, y: 32, r:14 },
+]
+
 function openMapping() {
   document.getElementById('mappingOverlay')?.remove()
   cancelAnimationFrame(window._mapAnimId)
 
+  // Carrega bindings salvos (slot → keycode gamepad)
+  let customBindings = {}
+  try { customBindings = JSON.parse(localStorage.getItem('rc_ejs_controls') || '{}') } catch {}
+
   const overlay = document.createElement('div')
   overlay.id = 'mappingOverlay'
-  overlay.style.cssText = 'position:absolute;inset:0;z-index:600;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center'
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:600;background:rgba(0,0,0,0.96);display:flex;flex-direction:column;align-items:center;justify-content:center'
 
-  let listening = null
-  let bindings = {}
-  try { bindings = JSON.parse(localStorage.getItem('rc_bindings') || '{}') } catch {}
-
-  // Canvas SVG — não usa innerHTML dinâmico, usa atributos diretos
   const SVG_NS = 'http://www.w3.org/2000/svg'
-  function mkEl(tag, attrs) {
+  function mk(tag, attrs, txt) {
     const el = document.createElementNS(SVG_NS, tag)
-    Object.entries(attrs).forEach(([k,v]) => el.setAttribute(k, v))
+    Object.entries(attrs).forEach(([k,v]) => el.setAttribute(k, String(v)))
+    if (txt !== undefined) el.textContent = txt
     return el
   }
 
-  const BTNS = [
-    { idx:12,label:'↑',  x:118,y:148,r:13 },
-    { idx:13,label:'↓',  x:118,y:190,r:13 },
-    { idx:14,label:'←',  x: 96,y:169,r:13 },
-    { idx:15,label:'→',  x:140,y:169,r:13 },
-    { idx: 0,label:'A',  x:398,y:165,r:16,color:'#4caf50' },
-    { idx: 1,label:'B',  x:422,y:189,r:16,color:'#f44336' },
-    { idx: 2,label:'X',  x:374,y:189,r:16,color:'#2196f3' },
-    { idx: 3,label:'Y',  x:398,y:213,r:16,color:'#ff9800' },
-    { idx: 4,label:'LB', x: 90,y: 65,r:17 },
-    { idx: 5,label:'RB', x:450,y: 65,r:17 },
-    { idx: 8,label:'SEL',x:210,y:172,r:15 },
-    { idx: 9,label:'STA',x:280,y:172,r:15 },
-    { idx:16,label:'⬤', x:245,y:148,r:18,color:'#66c0f4' },
-  ]
-
-  // Cria SVG estático
-  const svg = mkEl('svg', { width:'540', height:'290', viewBox:'0 0 540 290', style:'max-width:96vw' })
-
-  // Corpo
-  const body = mkEl('path', { d:'M105,88 Q70,73 50,108 Q20,158 45,218 Q60,258 90,263 Q120,268 145,238 Q165,213 185,198 L270,193 L355,198 Q375,213 395,238 Q420,268 450,263 Q480,258 495,218 Q520,158 490,108 Q470,73 435,88 L380,78 Q320,58 270,58 Q220,58 160,78Z', fill:'#1a1a2e', stroke:'#2a2a4e', 'stroke-width':'2' })
-  svg.appendChild(body)
-
+  // SVG do controle
+  const svg = mk('svg', { width:'540', height:'280', viewBox:'0 0 540 280', style:'max-width:94vw;display:block' })
+  svg.appendChild(mk('path', { d:'M105,88 Q70,73 50,108 Q20,158 45,218 Q60,258 90,263 Q120,268 145,238 Q165,213 185,198 L270,193 L355,198 Q375,213 395,238 Q420,268 450,263 Q480,258 495,218 Q520,158 490,108 Q470,73 435,88 L380,78 Q320,58 270,58 Q220,58 160,78Z', fill:'#1a1a2e', stroke:'#2a2a4e', 'stroke-width':'2' }))
   // Gatilhos
-  const lt = mkEl('path', { d:'M58,43 Q48,13 83,8 L153,16 Q133,36 116,46Z', fill:'#222', stroke:'#444', 'stroke-width':'1.5', id:'lt-shape' })
-  const rt = mkEl('path', { d:'M482,43 Q492,13 457,8 L387,16 Q407,36 424,46Z', fill:'#222', stroke:'#444', 'stroke-width':'1.5', id:'rt-shape' })
-  svg.appendChild(lt); svg.appendChild(rt)
-  const ltTxt = mkEl('text', { x:'105',y:'32',fill:'#555','text-anchor':'middle','font-size':'9','font-weight':'700' }); ltTxt.textContent='LT'
-  const rtTxt = mkEl('text', { x:'435',y:'32',fill:'#555','text-anchor':'middle','font-size':'9','font-weight':'700' }); rtTxt.textContent='RT'
-  svg.appendChild(ltTxt); svg.appendChild(rtTxt)
-
-  // Analógicos (círculos base)
-  const lStickBase = mkEl('circle', { cx:'160',cy:'208',r:'24',fill:'#111',stroke:'#333','stroke-width':'1.5' })
-  const rStickBase = mkEl('circle', { cx:'330',cy:'223',r:'20',fill:'#111',stroke:'#333','stroke-width':'1.5' })
-  const lStick = mkEl('circle', { cx:'160',cy:'208',r:'12',fill:'#333',stroke:'#66c0f4','stroke-width':'1.5' })
-  const rStick = mkEl('circle', { cx:'330',cy:'223',r:'10',fill:'#333',stroke:'#66c0f4','stroke-width':'1.5' })
-  svg.appendChild(lStickBase); svg.appendChild(rStickBase)
+  svg.appendChild(mk('path', { d:'M58,43 Q48,13 83,8 L153,16 Q133,36 116,46Z', fill:'#222', stroke:'#333', 'stroke-width':'1.5', id:'lt-path' }))
+  svg.appendChild(mk('path', { d:'M482,43 Q492,13 457,8 L387,16 Q407,36 424,46Z', fill:'#222', stroke:'#333', 'stroke-width':'1.5', id:'rt-path' }))
+  // Analógicos
+  svg.appendChild(mk('circle', { cx:'160',cy:'208',r:'24',fill:'#111',stroke:'#333','stroke-width':'1.5' }))
+  svg.appendChild(mk('circle', { cx:'330',cy:'223',r:'20',fill:'#111',stroke:'#333','stroke-width':'1.5' }))
+  const lStick = mk('circle', { cx:'160',cy:'208',r:'12',fill:'#333',stroke:'#555','stroke-width':'1.5' })
+  const rStick = mk('circle', { cx:'330',cy:'223',r:'10',fill:'#333',stroke:'#555','stroke-width':'1.5' })
   svg.appendChild(lStick); svg.appendChild(rStick)
 
-  // Grupos de botões
-  const btnGroups = {}
-  BTNS.forEach(b => {
-    const g = mkEl('g', { style:'cursor:pointer', 'data-idx':b.idx })
-    const circle = mkEl('circle', { cx:b.x, cy:b.y, r:b.r, fill:'rgba(255,255,255,0.04)', stroke:b.color||'#555', 'stroke-width':'1.5' })
-    const label = mkEl('text', { x:b.x, y:b.y+4, 'text-anchor':'middle', fill:b.color||'#888', 'font-size':'10', 'font-weight':'700' })
-    label.textContent = b.label
-    g.appendChild(circle); g.appendChild(label)
+  let listening = null
+  const btnEls = {}
+
+  EJS_SLOTS.forEach(b => {
+    const g = mk('g', { style:'cursor:pointer' })
+    const circle = mk('circle', { cx:b.x, cy:b.y, r:b.r, fill:'rgba(255,255,255,0.04)', stroke:b.color||'#555', 'stroke-width':'1.5' })
+    const label  = mk('text', { x:b.x, y:b.y+4, 'text-anchor':'middle', fill:b.color||'#888', 'font-size':'10', 'font-weight':'700' }, b.label)
+    // Sub-texto mostrando binding customizado
+    const sub = mk('text', { x:b.x, y:b.y+b.r+9, 'text-anchor':'middle', fill:'#66c0f4', 'font-size':'8' }, '')
+    g.appendChild(circle); g.appendChild(label); g.appendChild(sub)
     g.addEventListener('click', () => {
-      if (listening === b.idx) { listening = null; hintEl.textContent = 'Clique em um botão para remapear' }
-      else { listening = b.idx; hintEl.textContent = 'Pressione o botão no controle...' }
-      updateBtnStyles()
+      if (listening === b.slot) { listening = null; hintEl.textContent = 'Clique em um botão para remapear' }
+      else { listening = b.slot; hintEl.textContent = `Pressione o botão no controle para "${b.label}"...` }
+      refreshBtns()
     })
     svg.appendChild(g)
-    btnGroups[b.idx] = { g, circle, label, def:b }
+    btnEls[b.slot] = { circle, label, sub }
   })
 
-  function updateBtnStyles() {
+  function refreshBtns() {
     const gp = [...(navigator.getGamepads?.() || [])].find(Boolean)
-    BTNS.forEach(b => {
-      const { circle, label } = btnGroups[b.idx]
-      const pressed = gp?.buttons[bindings[b.idx] ?? b.idx]?.pressed
-      const isListen = listening === b.idx
-      const remapped = bindings[b.idx] !== undefined
-      const col = isListen ? '#66c0f4' : (remapped ? '#66c0f4' : (b.color || (pressed ? '#fff' : '#666')))
+    EJS_SLOTS.forEach(b => {
+      const { circle, label, sub } = btnEls[b.slot]
+      const isListen = listening === b.slot
+      const hasCustom = customBindings[b.slot] !== undefined
+      const gpIdx = customBindings[b.slot]
+      const pressed = gp?.buttons[gpIdx ?? -1]?.pressed
+      const col = isListen ? '#66c0f4' : (hasCustom ? '#66c0f4' : (b.color || (pressed ? '#fff' : '#666')))
       circle.setAttribute('fill', isListen ? 'rgba(102,192,244,0.2)' : (pressed ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)'))
       circle.setAttribute('stroke', isListen ? '#66c0f4' : col)
       circle.setAttribute('stroke-width', isListen ? '2.5' : '1.5')
       label.setAttribute('fill', col)
-
-      // Gatilhos
-      const ltVal = gp?.buttons[6]?.value || 0
-      const rtVal = gp?.buttons[7]?.value || 0
-      ltTxt.setAttribute('fill', ltVal > 0.1 ? '#66c0f4' : '#555')
-      rtTxt.setAttribute('fill', rtVal > 0.1 ? '#66c0f4' : '#555')
-      lt.setAttribute('fill', `rgba(102,192,244,${ltVal*0.4+0.05})`)
-      rt.setAttribute('fill', `rgba(102,192,244,${rtVal*0.4+0.05})`)
+      sub.textContent = hasCustom ? `GP${gpIdx}` : ''
     })
     // Analógicos
     const axes = gp ? gp.axes : [0,0,0,0]
@@ -387,21 +382,38 @@ function openMapping() {
     lStick.setAttribute('cy', 208+(axes[1]||0)*14)
     rStick.setAttribute('cx', 330+(axes[2]||0)*12)
     rStick.setAttribute('cy', 223+(axes[3]||0)*12)
+    // Gatilhos
+    const ltV = gp?.buttons[6]?.value||0
+    const rtV = gp?.buttons[7]?.value||0
+    svg.querySelector('#lt-path')?.setAttribute('fill', `rgba(102,192,244,${ltV*0.4+0.05})`)
+    svg.querySelector('#rt-path')?.setAttribute('fill', `rgba(102,192,244,${rtV*0.4+0.05})`)
   }
 
-  // Poll de input — escuta botão para remapeamento
+  function saveAndApply() {
+    // Converte customBindings para formato EJS_Settings
+    const ejsMap = {}
+    EJS_SLOTS.forEach(b => {
+      ejsMap[b.slot] = customBindings[b.slot] !== undefined
+        ? { value2: 'BUTTON_' + (customBindings[b.slot]+1) }
+        : { value2: b.gpVal }
+    })
+    localStorage.setItem('rc_ejs_controls', JSON.stringify(ejsMap))
+  }
+
   function pollInput() {
     if (!document.getElementById('mappingOverlay')) return
-    updateBtnStyles()
+    refreshBtns()
     if (listening !== null) {
       const gp = [...(navigator.getGamepads?.() || [])].find(Boolean)
       if (gp) {
         for (let i = 0; i < gp.buttons.length; i++) {
           if (gp.buttons[i].pressed) {
-            bindings[listening] = i
-            localStorage.setItem('rc_bindings', JSON.stringify(bindings))
+            customBindings[listening] = i
+            saveAndApply()
+            hintEl.textContent = `"${EJS_SLOTS.find(b=>b.slot===listening)?.label}" → botão ${i} ✓`
             listening = null
-            hintEl.textContent = 'Remapeado! Clique em outro botão ou feche.'
+            refreshBtns()
+            break
           }
         }
       }
@@ -409,54 +421,45 @@ function openMapping() {
     window._mapAnimId = requestAnimationFrame(pollInput)
   }
 
-  // Monta UI
+  // UI
+  const wrap = document.createElement('div')
+  wrap.style.cssText = 'padding:16px;max-width:600px;width:100%;text-align:center'
+
   const title = document.createElement('div')
-  title.style.cssText = 'font-family:Rajdhani,sans-serif;font-size:22px;font-weight:700;color:#66c0f4;margin-bottom:6px;text-align:center'
+  title.style.cssText = 'font-family:Rajdhani,sans-serif;font-size:22px;font-weight:700;color:#66c0f4;margin-bottom:6px'
   title.textContent = '🎮 Mapeamento de Controle'
 
   const hintEl = document.createElement('div')
-  hintEl.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:10px;text-align:center'
-  hintEl.textContent = 'Clique em um botão para remapear'
+  hintEl.style.cssText = 'font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:10px'
+  hintEl.textContent = 'Clique em um botão para remapear · GP# = botão customizado'
 
   const svgWrap = document.createElement('div')
-  svgWrap.style.cssText = 'display:flex;justify-content:center'
+  svgWrap.style.display = 'flex'
+  svgWrap.style.justifyContent = 'center'
   svgWrap.appendChild(svg)
 
-  const btnsDiv = document.createElement('div')
-  btnsDiv.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:14px'
+  const btnsRow = document.createElement('div')
+  btnsRow.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:14px'
 
   const resetBtn = document.createElement('button')
   resetBtn.style.cssText = 'background:#333;color:#aaa;border:1px solid #444;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:12px'
   resetBtn.textContent = '↩ Resetar'
-  resetBtn.addEventListener('click', () => { bindings = {}; localStorage.removeItem('rc_bindings'); hintEl.textContent = 'Bindings resetados.' })
+  resetBtn.onclick = () => { customBindings = {}; localStorage.removeItem('rc_ejs_controls'); hintEl.textContent = 'Bindings resetados.'; refreshBtns() }
 
   const closeBtn = document.createElement('button')
   closeBtn.style.cssText = 'background:#444;color:#fff;border:1px solid #555;border-radius:8px;padding:8px 24px;cursor:pointer;font-size:13px;font-weight:600'
   closeBtn.textContent = 'Fechar'
-  closeBtn.addEventListener('click', () => {
-    cancelAnimationFrame(window._mapAnimId)
-    overlay.remove()
-  })
+  closeBtn.onclick = () => { cancelAnimationFrame(window._mapAnimId); overlay.remove() }
 
-  btnsDiv.appendChild(resetBtn)
-  btnsDiv.appendChild(closeBtn)
-
-  const inner = document.createElement('div')
-  inner.style.cssText = 'padding:16px;max-width:600px;width:100%'
-  inner.appendChild(title)
-  inner.appendChild(hintEl)
-  inner.appendChild(svgWrap)
-  inner.appendChild(btnsDiv)
-  overlay.appendChild(inner)
+  btnsRow.appendChild(resetBtn); btnsRow.appendChild(closeBtn)
+  wrap.appendChild(title); wrap.appendChild(hintEl); wrap.appendChild(svgWrap); wrap.appendChild(btnsRow)
+  overlay.appendChild(wrap)
   document.getElementById('playerWrap').appendChild(overlay)
 
-  // Fecha com B/Guide do gamepad
-  onGamepad((btn, type) => {
+  // Fechar com B/Guide
+  const off = onGamepad((btn, type) => {
     if (type !== 'press') return
-    if (btn === BTN.B || btn === BTN.GUIDE) {
-      cancelAnimationFrame(window._mapAnimId)
-      overlay.remove()
-    }
+    if (btn === BTN.B || btn === BTN.GUIDE) { cancelAnimationFrame(window._mapAnimId); overlay.remove(); off() }
   })
 
   pollInput()
