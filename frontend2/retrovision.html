@@ -100,6 +100,7 @@ let allGames = [], systems = [], sysIdx = 0, gameIdx = 0
 let menuOpen = false, confirmOpen = false, confirmSel = 0
 let menuSel = 0
 let navStart = 0
+let navPaged = false
 
 // Carrega jogos
 const gData = await api.games().catch(() => ({ games: [] }))
@@ -402,25 +403,26 @@ function setupGamepad() {
     if (btn === BTN.LEFT || btn === BTN.RIGHT) {
       if (press) {
         navStart = performance.now()
+        navPaged = false
         if (btn === BTN.LEFT)  navLeft()
         if (btn === BTN.RIGHT) navRight()
       } else if (type === 'hold') {
         const held = navStart ? performance.now() - navStart : 0
-        if (held > 1000) {
-          // Segurou 1s+ → pula página inteira
+        if (held > 1000 || navPaged) {
+          // Primeiro pulo após 1s, depois repete rápido
+          navPaged = true
+          navStart = performance.now() - 100  // próximo pulo em 300ms
           const f = getFiltered()
           if (btn === BTN.LEFT)  gameIdx = Math.max(0, Math.floor(gameIdx/PAGE-1)*PAGE)
           if (btn === BTN.RIGHT) gameIdx = Math.min(f.length-1, (Math.floor(gameIdx/PAGE)+1)*PAGE)
-          navStart = performance.now()  // reseta para próxima página
           update()
         }
-        // Se held < 1000ms, não faz nada — espera acumular tempo
       }
     }
-    if (press && btn === BTN.UP)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; update() }
-    if (press && btn === BTN.DOWN) { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx = 0; navStart = 0; update() }
-    if (press && btn === BTN.LB)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; update() }
-    if (press && btn === BTN.RB)   { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx = 0; navStart = 0; update() }
+    if (press && btn === BTN.UP)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; navPaged = false; update() }
+    if (press && btn === BTN.DOWN) { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx = 0; navStart = 0; navPaged = false; update() }
+    if (press && btn === BTN.LB)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; navPaged = false; update() }
+    if (press && btn === BTN.RB)   { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx = 0; navStart = 0; navPaged = false; update() }
     if (press && btn === BTN.A)    launchGame()
     if (press && btn === BTN.GUIDE) openMenu()
     if (press && btn === BTN.B && !tvMode) tryExit()
