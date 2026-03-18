@@ -94,6 +94,8 @@ const SYS_META = {
 }
 const DEF_META = { label:'Outros', color:'#4b5563', glow:'#9ca3af', logo:null }
 
+const RANGE = 3
+const PAGE  = 20
 let allGames = [], systems = [], sysIdx = 0, gameIdx = 0
 let menuOpen = false, confirmOpen = false, confirmSel = 0
 let menuSel = 0
@@ -176,7 +178,6 @@ function renderSystems() {
 }
 
 // Carrossel
-const RANGE = 3
 function renderCarousel() {
   const filtered = getFiltered()
   const meta = getMeta()
@@ -400,14 +401,19 @@ function setupGamepad() {
     // Navegação normal
     if (btn === BTN.LEFT || btn === BTN.RIGHT) {
       if (press) {
-        // Clique simples — navega um por um e inicia timer
-        navStart = performance.now()
+        navStart = performance.now()  // inicia timer
         if (btn === BTN.LEFT)  navLeft(false)
         if (btn === BTN.RIGHT) navRight(false)
       } else if (type === 'hold') {
-        // Segurado — passa tempo acumulado para decidir se pula página
-        if (btn === BTN.LEFT)  navLeft(true)
-        if (btn === BTN.RIGHT) navRight(true)
+        // hold com repeat — navega 1 por 1, mas se segurar >2s pula página
+        const held = navStart ? performance.now() - navStart : 0
+        if (held > 2000) {
+          if (btn === BTN.LEFT)  { const f=getFiltered(); gameIdx=Math.max(0,Math.floor(gameIdx/PAGE-1)*PAGE); navStart=performance.now(); update() }
+          if (btn === BTN.RIGHT) { const f=getFiltered(); gameIdx=Math.min(f.length-1,Math.floor(gameIdx/PAGE+1)*PAGE); navStart=performance.now(); update() }
+        } else {
+          if (btn === BTN.LEFT)  navLeft(false)
+          if (btn === BTN.RIGHT) navRight(false)
+        }
       }
     }
     if (press && btn === BTN.UP)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; update() }
@@ -420,7 +426,6 @@ function setupGamepad() {
   })
 }
 
-const PAGE = 20
 function navLeft(isHold = false) {
   const filtered = getFiltered()
   const held = isHold && navStart ? performance.now() - navStart : 0
