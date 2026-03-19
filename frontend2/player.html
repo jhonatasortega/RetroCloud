@@ -188,9 +188,9 @@ window.EJS_Buttons = {
   playPause:false, mute:false, settings:false,
   fullscreen:false, screenRecord:false, gamepad:false, cheat:false,
   volume:false, contextMenu:false,
-  // habilitados para que a API (saveState/loadState/restart) funcione;
+  // habilitados para que a API (saveState/loadState/restart/netplay) funcione;
   // a barra do EJS já está oculta via CSS
-  saveState:true, loadState:true, restart:true, saveSavFiles:true,
+  saveState:true, loadState:true, restart:true, saveSavFiles:true, netplay:true,
 }
 
 // ── Save states sincronizados com o servidor ───────────────────────────────
@@ -315,7 +315,8 @@ const MENU_ITEMS = [
   { icon:'⊞', label:'Tela cheia',        action: () => { closeMenu(); toggleFs() } },
   { icon:'💾', label:'Salvar estado',     action: () => { window.EJS_emulator?.saveState?.(); closeMenu() } },
   { icon:'📂', label:'Carregar estado',   action: () => { window.EJS_emulator?.loadState?.(); closeMenu() } },
-  { icon:'🎮', label:'Configurar controle', action: () => { closeMenu(); openRemap() } },
+  { icon:'🌐', label:'Jogar junto (Netplay)', action: () => { window.EJS_emulator?.openNetplay?.(); closeMenu() } },
+  { icon:'🎮', label:'Configurar controle',  action: () => { closeMenu(); openRemap() } },
   { icon:'🔄', label:'Reiniciar',         action: () => { window.EJS_emulator?.restart?.(); closeMenu() } },
   { icon:'←',  label:'Sair do jogo',     action: goBack },
 ]
