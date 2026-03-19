@@ -51,7 +51,32 @@
   <div class="rv-menu-overlay hidden" id="rvRemapOverlay">
     <div class="rv-menu" style="min-width:340px;max-width:480px">
       <div class="rv-menu-header"><div class="rv-menu-title">Configurar Controle</div></div>
-      <div id="rvRemapList" style="max-height:55vh;overflow-y:auto"></div>
+      <div style="padding:8px 16px 0;opacity:0.7">
+        <svg width="100%" viewBox="0 0 400 280" xmlns="http://www.w3.org/2000/svg">
+          <path d="M75,25 Q110,10 170,20 L170,45 Q110,35 75,50 Z" fill="#1a1a1a"/>
+          <path d="M325,25 Q290,10 230,20 L230,45 Q290,35 325,50 Z" fill="#1a1a1a"/>
+          <path d="M50,45 Q100,22 190,32 L190,52 Q100,42 50,65 Z" fill="#333"/>
+          <path d="M350,45 Q300,22 210,32 L210,52 Q300,42 350,65 Z" fill="#333"/>
+          <path d="M100,40 Q200,30 300,40 Q380,50 380,130 Q380,220 310,230 Q270,235 230,190 L170,190 Q130,235 90,230 Q20,220 20,130 Q20,50 100,40 Z" fill="#0f0f0f"/>
+          <circle cx="200" cy="85" r="18" fill="#fff"/>
+          <path d="M194,85 L206,85 M200,79 L200,91" stroke="#000" stroke-width="2.5"/>
+          <circle cx="240" cy="72" r="7" fill="#333"/>
+          <circle cx="160" cy="72" r="7" fill="#333"/>
+          <rect x="195" y="120" width="10" height="6" rx="2" fill="#fff"/>
+          <circle cx="85" cy="110" r="25" fill="#222"/>
+          <circle cx="85" cy="110" r="20" fill="#333"/>
+          <g transform="translate(315, 110)">
+            <circle cx="0" cy="26" r="14" fill="#008000"/>
+            <circle cx="26" cy="0" r="14" fill="#e61919"/>
+            <circle cx="-26" cy="0" r="14" fill="#0000cd"/>
+            <circle cx="0" cy="-26" r="14" fill="#ffcc00"/>
+          </g>
+          <path d="M145,170 V130 M125,150 H165" stroke="#1a1a1a" stroke-width="12" stroke-linecap="round"/>
+          <circle cx="255" cy="155" r="25" fill="#222"/>
+          <circle cx="255" cy="155" r="20" fill="#333"/>
+        </svg>
+      </div>
+      <div id="rvRemapList" style="max-height:40vh;overflow-y:auto"></div>
       <div style="display:flex;gap:8px;padding:12px 16px">
         <button class="btn btn-secondary btn-sm" id="rvRemapReset" style="flex:1">Restaurar padrão</button>
         <button class="btn btn-primary btn-sm" id="rvRemapClose" style="flex:1">Fechar</button>
@@ -407,7 +432,21 @@ function setupGamepad() {
     const nav   = type === 'press' || type === 'hold'
 
     if (!document.getElementById('rvRemapOverlay').classList.contains('hidden')) {
-      if (press && (btn === BTN.B || btn === BTN.GUIDE)) closeRemapRV()
+      if (rvRemapListening !== null) {
+        // Aguardando input — qualquer botão cancela (B/Guide)
+        if (press && (btn === BTN.B || btn === BTN.GUIDE)) stopListeningRV()
+      } else {
+        if (press && btn === BTN.UP)   selectRemapRV(rvRemapSel - 1)
+        if (press && btn === BTN.DOWN) selectRemapRV(rvRemapSel + 1)
+        if (press && btn === BTN.A) {
+          const a = RV_REMAP_ACTIONS[rvRemapSel]
+          if (a) {
+            const el = document.querySelector(`#rvRemapList .rv-menu-item[data-idx="${rvRemapSel}"] .remap-rv-label`)
+            startListeningRV(a.btn, el)
+          }
+        }
+        if (press && (btn === BTN.B || btn === BTN.GUIDE)) closeRemapRV()
+      }
       return
     }
 
@@ -460,10 +499,10 @@ function setupGamepad() {
         }
       }
     }
-    if (press && btn === BTN.UP)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; navPaged = false; update() }
-    if (press && btn === BTN.DOWN) { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx = 0; navStart = 0; navPaged = false; update() }
-    if (press && btn === BTN.LB)   { sysIdx = Math.max(0, sysIdx-1); gameIdx = 0; navStart = 0; navPaged = false; update() }
-    if (press && btn === BTN.RB)   { sysIdx = Math.min(systems.length-1, sysIdx+1); gameIdx = 0; navStart = 0; navPaged = false; update() }
+    if (press && btn === BTN.UP)   { sysIdx = (sysIdx - 1 + systems.length) % systems.length; gameIdx = 0; navStart = 0; navPaged = false; update() }
+    if (press && btn === BTN.DOWN) { sysIdx = (sysIdx + 1) % systems.length; gameIdx = 0; navStart = 0; navPaged = false; update() }
+    if (press && btn === BTN.LB)   { sysIdx = (sysIdx - 1 + systems.length) % systems.length; gameIdx = 0; navStart = 0; navPaged = false; update() }
+    if (press && btn === BTN.RB)   { sysIdx = (sysIdx + 1) % systems.length; gameIdx = 0; navStart = 0; navPaged = false; update() }
     if (press && btn === BTN.A)    launchGame()
     if (press && btn === BTN.GUIDE) openMenu()
     if (press && btn === BTN.B && !tvMode) tryExit()
@@ -552,6 +591,7 @@ const RV_BTN_NAMES = {
 
 let rvRemapListening = null
 let rvRemapInterval  = null
+let rvRemapSel       = 0
 
 function renderRemapRV() {
   const map = getMappings()
@@ -559,10 +599,11 @@ function renderRemapRV() {
   Object.entries(map).forEach(([phys, virt]) => { inv[virt] = +phys })
 
   const list = document.getElementById('rvRemapList')
-  list.innerHTML = RV_REMAP_ACTIONS.map(a => {
+  list.innerHTML = RV_REMAP_ACTIONS.map((a, i) => {
     const physBtn = inv[a.btn] !== undefined ? inv[a.btn] : a.btn
     const label   = RV_BTN_NAMES[physBtn] !== undefined ? RV_BTN_NAMES[physBtn] : `Btn ${physBtn}`
-    return `<button class="rv-menu-item" style="justify-content:space-between;padding:10px 16px" data-virtual="${a.btn}">
+    const sel     = i === rvRemapSel
+    return `<button class="rv-menu-item${sel ? ' selected' : ''}" style="justify-content:space-between;padding:10px 16px" data-idx="${i}" data-virtual="${a.btn}">
       <span>${a.name}</span>
       <span class="remap-rv-label" style="font-size:11px;color:#66c0f4;background:#66c0f420;
         padding:2px 10px;border-radius:6px">${label}</span>
@@ -570,8 +611,20 @@ function renderRemapRV() {
   }).join('')
 
   list.querySelectorAll('.rv-menu-item').forEach(b => {
-    b.addEventListener('click', () => startListeningRV(+b.dataset.virtual, b.querySelector('.remap-rv-label')))
+    b.addEventListener('click', () => {
+      rvRemapSel = +b.dataset.idx
+      startListeningRV(+b.dataset.virtual, b.querySelector('.remap-rv-label'))
+    })
+    b.addEventListener('mouseover', () => { rvRemapSel = +b.dataset.idx; renderRemapRV() })
   })
+}
+
+function selectRemapRV(i) {
+  rvRemapSel = Math.max(0, Math.min(RV_REMAP_ACTIONS.length - 1, i))
+  renderRemapRV()
+  // Scroll para item visível
+  const el = document.querySelector(`#rvRemapList .rv-menu-item[data-idx="${rvRemapSel}"]`)
+  el?.scrollIntoView({ block: 'nearest' })
 }
 
 function startListeningRV(virtualBtn, labelEl) {
@@ -605,6 +658,7 @@ function stopListeningRV() {
 }
 
 function openRemapRV() {
+  rvRemapSel = 0
   renderRemapRV()
   document.getElementById('rvRemapOverlay').classList.remove('hidden')
 }

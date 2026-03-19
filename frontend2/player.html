@@ -59,7 +59,32 @@
         <span>🎮</span>
         <span class="title">Configurar Controle</span>
       </div>
-      <div id="remapList" style="max-height:60vh;overflow-y:auto"></div>
+      <div style="padding:10px 16px 0;opacity:0.7">
+        <svg width="100%" viewBox="0 0 400 280" xmlns="http://www.w3.org/2000/svg">
+          <path d="M75,25 Q110,10 170,20 L170,45 Q110,35 75,50 Z" fill="#1a1a1a"/>
+          <path d="M325,25 Q290,10 230,20 L230,45 Q290,35 325,50 Z" fill="#1a1a1a"/>
+          <path d="M50,45 Q100,22 190,32 L190,52 Q100,42 50,65 Z" fill="#333"/>
+          <path d="M350,45 Q300,22 210,32 L210,52 Q300,42 350,65 Z" fill="#333"/>
+          <path d="M100,40 Q200,30 300,40 Q380,50 380,130 Q380,220 310,230 Q270,235 230,190 L170,190 Q130,235 90,230 Q20,220 20,130 Q20,50 100,40 Z" fill="#0f0f0f"/>
+          <circle cx="200" cy="85" r="18" fill="#fff"/>
+          <path d="M194,85 L206,85 M200,79 L200,91" stroke="#000" stroke-width="2.5"/>
+          <circle cx="240" cy="72" r="7" fill="#333"/>
+          <circle cx="160" cy="72" r="7" fill="#333"/>
+          <rect x="195" y="120" width="10" height="6" rx="2" fill="#fff"/>
+          <circle cx="85" cy="110" r="25" fill="#222"/>
+          <circle cx="85" cy="110" r="20" fill="#333"/>
+          <g transform="translate(315, 110)">
+            <circle cx="0" cy="26" r="14" fill="#008000"/>
+            <circle cx="26" cy="0" r="14" fill="#e61919"/>
+            <circle cx="-26" cy="0" r="14" fill="#0000cd"/>
+            <circle cx="0" cy="-26" r="14" fill="#ffcc00"/>
+          </g>
+          <path d="M145,170 V130 M125,150 H165" stroke="#1a1a1a" stroke-width="12" stroke-linecap="round"/>
+          <circle cx="255" cy="155" r="25" fill="#222"/>
+          <circle cx="255" cy="155" r="20" fill="#333"/>
+        </svg>
+      </div>
+      <div id="remapList" style="max-height:45vh;overflow-y:auto"></div>
       <div style="display:flex;gap:8px;padding:12px 16px">
         <button class="btn btn-secondary btn-sm" id="remapReset" style="flex:1">Restaurar padrão</button>
         <button class="btn btn-primary btn-sm" id="remapClose" style="flex:1">Fechar</button>
@@ -363,29 +388,39 @@ const BTN_NAMES = {
 }
 
 const remapOverlay = document.getElementById('remapOverlay')
-let listeningFor = null  // virtual button aguardando input físico
+let listeningFor = null
 let rawGamepadListener = null
+let remapSel = 0
 
 function renderRemapList() {
   const map = getMappings()
-  // mapa invertido: virtual → physical
   const inv = {}
   Object.entries(map).forEach(([phys, virt]) => { inv[virt] = +phys })
 
   const list = document.getElementById('remapList')
-  list.innerHTML = REMAP_ACTIONS.map(a => {
+  list.innerHTML = REMAP_ACTIONS.map((a, i) => {
     const physBtn = inv[a.btn] !== undefined ? inv[a.btn] : a.btn
     const label   = BTN_NAMES[physBtn] !== undefined ? BTN_NAMES[physBtn] : `Btn ${physBtn}`
-    return `<div class="game-menu-item" style="justify-content:space-between;cursor:default;padding:10px 16px">
+    const sel     = i === remapSel
+    return `<div class="game-menu-item${sel ? ' selected' : ''}" style="justify-content:space-between;padding:10px 16px" data-idx="${i}">
       <span>${a.name}</span>
-      <button class="btn btn-secondary btn-sm remap-btn" data-virtual="${a.btn}"
-        style="min-width:80px;font-size:11px">${label}</button>
+      <button class="btn btn-secondary btn-sm remap-btn" data-virtual="${a.btn}" data-idx="${i}"
+        style="min-width:80px;font-size:11px${sel ? ';outline:2px solid #66c0f4' : ''}">${label}</button>
     </div>`
   }).join('')
 
   list.querySelectorAll('.remap-btn').forEach(b => {
-    b.addEventListener('click', () => startListening(+b.dataset.virtual, b))
+    b.addEventListener('click', () => { remapSel = +b.dataset.idx; startListening(+b.dataset.virtual, b) })
   })
+  list.querySelectorAll('.game-menu-item').forEach(b => {
+    b.addEventListener('mouseover', () => { remapSel = +b.dataset.idx; renderRemapList() })
+  })
+}
+
+function selectRemapItem(i) {
+  remapSel = Math.max(0, Math.min(REMAP_ACTIONS.length - 1, i))
+  renderRemapList()
+  document.querySelector(`#remapList .game-menu-item[data-idx="${remapSel}"]`)?.scrollIntoView({ block: 'nearest' })
 }
 
 function startListening(virtualBtn, buttonEl) {
@@ -422,6 +457,7 @@ function stopListening() {
 }
 
 function openRemap() {
+  remapSel = 0
   renderRemapList()
   remapOverlay.classList.remove('hidden')
 }
@@ -441,7 +477,20 @@ startGamepad()
 onGamepad((btn, type) => {
   if (type !== 'press') return
   if (!remapOverlay.classList.contains('hidden')) {
-    if (btn === BTN.B || btn === BTN.GUIDE) { stopListening(); closeRemap() }
+    if (listeningFor !== null) {
+      if (btn === BTN.B || btn === BTN.GUIDE) stopListening()
+    } else {
+      if (btn === BTN.UP)   selectRemapItem(remapSel - 1)
+      if (btn === BTN.DOWN) selectRemapItem(remapSel + 1)
+      if (btn === BTN.A) {
+        const a = REMAP_ACTIONS[remapSel]
+        if (a) {
+          const el = document.querySelector(`#remapList .remap-btn[data-idx="${remapSel}"]`)
+          startListening(a.btn, el)
+        }
+      }
+      if (btn === BTN.B || btn === BTN.GUIDE) closeRemap()
+    }
     return
   }
   if (!menuOverlay.classList.contains('hidden')) {
