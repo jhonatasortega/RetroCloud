@@ -37,10 +37,10 @@
 </div>
 
 <script type="module">
-import { api } from '/js/api.js'
-import { requireAuth, logout } from '/js/auth.js'
-import { startGamepad, onGamepad, BTN, hasGamepad } from '/js/gamepad.js'
-import { toastErr } from '/js/ui.js'
+import { api } from '/js/api.js?v=2'
+import { requireAuth, logout } from '/js/auth.js?v=2'
+import { startGamepad, onGamepad, BTN, hasGamepad } from '/js/gamepad.js?v=2'
+import { toastErr } from '/js/ui.js?v=2'
 
 const PER_PAGE = 24
 let allGames = [], filtered = [], page = 1, activeSys = ''

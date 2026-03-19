@@ -29,9 +29,9 @@
 </div>
 
 <script type="module">
-import { api } from '/js/api.js'
-import { requireAdmin, logout } from '/js/auth.js'
-import { toastOk, toastErr } from '/js/ui.js'
+import { api } from '/js/api.js?v=2'
+import { requireAdmin, logout } from '/js/auth.js?v=2'
+import { toastOk, toastErr } from '/js/ui.js?v=2'
 
 await requireAdmin()
 document.getElementById('logoutBtn').addEventListener('click', logout)

@@ -102,9 +102,9 @@
 </div>
 
 <script type="module">
-import { api } from '/js/api.js'
-import { requireAuth, logout } from '/js/auth.js'
-import { startGamepad, onGamepad, BTN, hasGamepad, getMappings, setMapping, resetMappings } from '/js/gamepad.js'
+import { api } from '/js/api.js?v=2'
+import { requireAuth, logout } from '/js/auth.js?v=2'
+import { startGamepad, onGamepad, BTN, hasGamepad, getMappings, setMapping, resetMappings } from '/js/gamepad.js?v=2'
 
 const user = await requireAuth()
 if (!user) throw 0
