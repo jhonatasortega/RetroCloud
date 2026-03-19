@@ -132,6 +132,28 @@ class Comment(db.Model):
             'criado_em': self.criado_em.isoformat()
         }
 
+class NetplaySession(db.Model):
+    __tablename__ = 'netplay_sessions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    host_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    rom_id = db.Column(db.Integer, db.ForeignKey('roms.id'), nullable=False)
+    room_id = db.Column(db.String(20), nullable=False, unique=True)
+    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+
+    host = db.relationship('User', foreign_keys=[host_user_id])
+    rom = db.relationship('Rom', foreign_keys=[rom_id])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'host_user_id': self.host_user_id,
+            'host_nome': self.host.nome if self.host else None,
+            'rom_id': self.rom_id,
+            'room_id': self.room_id,
+            'criado_em': self.criado_em.isoformat(),
+        }
+
 class SystemConfig(db.Model):
     __tablename__ = 'system_config'
     

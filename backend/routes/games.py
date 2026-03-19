@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, send_file
-from models import db, Rom, Comment, User, Save
+from models import db, Rom, Comment, User, Save, NetplaySession
 from utils.jwt_helper import token_required
-import os
+import os, secrets
 
 games_bp = Blueprint('games', __name__)
 
@@ -151,4 +151,53 @@ def load_game(current_user, rom_id):
     with open(save.caminho, 'rb') as f:
         encoded = base64.b64encode(f.read()).decode('utf-8')
     return jsonify({'save_data': encoded}), 200
+
+
+# ── Netplay Sessions ────────────────────────────────────────────────────────
+
+@games_bp.route('/netplay/active', methods=['GET'])
+@token_required
+def list_netplay_sessions(current_user):
+    """Lista todas as sessões de netplay ativas."""
+    sessions = NetplaySession.query.all()
+    return jsonify({'sessions': [s.to_dict() for s in sessions]}), 200
+
+
+@games_bp.route('/<int:rom_id>/netplay', methods=['POST'])
+@token_required
+def create_netplay_session(current_user, rom_id):
+    """Cria uma sessão de netplay para o jogo."""
+    rom = Rom.query.get(rom_id)
+    if not rom:
+        return jsonify({'message': 'ROM não encontrada'}), 404
+
+    # Remove sessão anterior deste host (se houver)
+    NetplaySession.query.filter_by(host_user_id=current_user.id).delete()
+
+    room_id = secrets.token_urlsafe(6)  # ~8 chars url-safe
+    sess = NetplaySession(host_user_id=current_user.id, rom_id=rom_id, room_id=room_id)
+    db.session.add(sess)
+    db.session.commit()
+    return jsonify(sess.to_dict()), 201
+
+
+@games_bp.route('/<int:rom_id>/netplay', methods=['GET'])
+@token_required
+def get_netplay_session(current_user, rom_id):
+    """Retorna sessão ativa para um jogo (se houver)."""
+    sess = NetplaySession.query.filter_by(rom_id=rom_id).first()
+    if not sess:
+        return jsonify({'session': None}), 200
+    return jsonify({'session': sess.to_dict()}), 200
+
+
+@games_bp.route('/<int:rom_id>/netplay', methods=['DELETE'])
+@token_required
+def end_netplay_session(current_user, rom_id):
+    """Encerra a sessão de netplay do host."""
+    sess = NetplaySession.query.filter_by(rom_id=rom_id, host_user_id=current_user.id).first()
+    if sess:
+        db.session.delete(sess)
+        db.session.commit()
+    return jsonify({'message': 'Sessão encerrada'}), 200
 

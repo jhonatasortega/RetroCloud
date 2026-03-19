@@ -96,9 +96,12 @@
   <!-- Menu do jogo -->
   <div class="game-menu-overlay hidden" id="gameMenuOverlay">
     <div class="game-menu">
-      <div class="game-menu-header">
-        <span>🎮</span>
-        <span class="title" id="menuGameTitle">—</span>
+      <div class="game-menu-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span>🎮</span>
+          <span class="title" id="menuGameTitle">—</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="sessionBtn" style="font-size:11px;white-space:nowrap">🌐 Criar sessão</button>
       </div>
       <div id="gameMenuItems"></div>
       <div class="game-menu-hint">↑↓ · A confirmar · B / Guide fechar</div>
@@ -113,9 +116,10 @@ import { startGamepad, onGamepad, BTN, getMappings, setMapping, resetMappings } 
 
 await requireAuth()
 
-const params = new URLSearchParams(location.search)
-const id     = params.get('id')
-const fromRV = sessionStorage.getItem('rc_from_rv') === '1'
+const params     = new URLSearchParams(location.search)
+const id         = params.get('id')
+const joinRoomId = params.get('join')
+const fromRV     = sessionStorage.getItem('rc_from_rv') === '1'
 
 if (!id) { location.href = '/library.html'; throw 0 }
 
@@ -238,6 +242,65 @@ st.textContent = `
 `
 document.head.appendChild(st)
 
+// ── Sessão netplay ─────────────────────────────────────────────────────────
+let activeSession = null
+const sessionBtn = document.getElementById('sessionBtn')
+
+async function updateSessionBtn() {
+  if (activeSession) {
+    sessionBtn.textContent = '✓ Sessão ativa'
+    sessionBtn.style.background = '#15803d'
+    sessionBtn.style.color = '#fff'
+    sessionBtn.title = `Room: ${activeSession.room_id}`
+  } else {
+    sessionBtn.textContent = '🌐 Criar sessão'
+    sessionBtn.style.background = ''
+    sessionBtn.style.color = ''
+    sessionBtn.title = ''
+  }
+}
+
+sessionBtn.addEventListener('click', async () => {
+  if (activeSession) {
+    await api.endSession(id).catch(() => {})
+    activeSession = null
+  } else {
+    try {
+      activeSession = await api.createSession(id)
+    } catch(e) { console.warn('Erro ao criar sessão', e); return }
+  }
+  updateSessionBtn()
+})
+
+window.addEventListener('pagehide', () => { if (activeSession) api.endSession(id) })
+
+// Auto-join netplay se veio com ?join=ROOM_ID
+async function autoJoinNetplay(roomId) {
+  await new Promise(r => setTimeout(r, 2000))
+  const emu = window.EJS_emulator
+  if (!emu) return
+  try {
+    // Tenta API direta do EJS
+    if (typeof emu.netplay?.joinRoom === 'function') { emu.netplay.joinRoom(roomId); return }
+    if (typeof emu.joinRoom === 'function')           { emu.joinRoom(roomId); return }
+  } catch(e) {}
+  // Abre modal e preenche automaticamente
+  emu.openNetplay?.()
+  await new Promise(r => setTimeout(r, 700))
+  const inputs = [...document.querySelectorAll('input[type="text"],input:not([type])')]
+  const roomInput = inputs.find(el => !el.value && el.offsetParent)
+  if (roomInput) {
+    roomInput.value = roomId
+    roomInput.dispatchEvent(new Event('input', { bubbles: true }))
+    roomInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 300))
+    const btns = [...document.querySelectorAll('button')]
+    const joinBtn = btns.find(b => /join|entrar|juntar/i.test(b.textContent) && b.offsetParent)
+      || btns.filter(b => b.offsetParent).at(-1)
+    joinBtn?.click()
+  }
+}
+
 // Esconde loading quando jogo inicia e entra em fullscreen
 function hideLoading() {
   clearInterval(barTimer)
@@ -256,7 +319,10 @@ function hideLoading() {
   }, 800)
 }
 
-window.EJS_onGameStart = hideLoading
+window.EJS_onGameStart = () => {
+  hideLoading()
+  if (joinRoomId) autoJoinNetplay(joinRoomId)
+}
 setTimeout(hideLoading, 15000)
 const script = document.createElement('script')
 script.id  = 'emulatorjs-script'

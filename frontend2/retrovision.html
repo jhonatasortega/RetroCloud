@@ -34,7 +34,10 @@
   <div class="rv-info" id="rvInfo">
     <div class="rv-game-title" id="rvTitle">—</div>
     <div class="rv-game-sub" id="rvSub"></div>
-    <button class="rv-play-btn" id="rvPlayBtn">▶ Jogar</button>
+    <div style="display:flex;gap:12px;align-items:center;justify-content:center">
+      <button class="rv-play-btn" id="rvPlayBtn">▶ Jogar</button>
+      <button class="rv-play-btn" id="rvJoinBtn" style="display:none">🌐 Jogar junto</button>
+    </div>
     <div class="rv-hint" id="rvHint">◀▶ navegar · A jogar · Guide menu · B sair</div>
   </div>
 
@@ -140,10 +143,17 @@ let menuSel = 0
 let navStart = 0
 let navPaged = false
 
-// Carrega jogos
-const gData = await api.games().catch(() => ({ games: [] }))
+// Carrega jogos e sessões ativas
+const [gData, sessData] = await Promise.all([
+  api.games().catch(() => ({ games: [] })),
+  api.getActiveSessions().catch(() => ({ sessions: [] })),
+])
 allGames = gData.games || []
 systems = [...new Set(allGames.map(g => g.sistema?.toLowerCase()).filter(Boolean))]
+
+// Mapa: rom_id → sessão
+let sessionsMap = {}
+;(sessData.sessions || []).forEach(s => { sessionsMap[s.rom_id] = s })
 
 // Mostra app
 const intro = document.getElementById('rvIntro')
@@ -182,6 +192,14 @@ function init() {
   setupMouse()
   setupTouch()
   setupKeyboard()
+  // Atualiza sessões a cada 15s
+  setInterval(async () => {
+    const d = await api.getActiveSessions().catch(() => null)
+    if (!d) return
+    sessionsMap = {}
+    ;(d.sessions || []).forEach(s => { sessionsMap[s.rom_id] = s })
+    renderInfo()
+  }, 15000)
 }
 
 // Computed
@@ -324,11 +342,31 @@ function renderInfo() {
   document.getElementById('rvSub').textContent = g
     ? `${meta.label} · ${safe+1} / ${filtered.length}` : ''
 
+  const session = g ? sessionsMap[g.id] : null
+  const joinBtn = document.getElementById('rvJoinBtn')
+  if (session && g) {
+    joinBtn.style.display = ''
+    joinBtn.style.background = `linear-gradient(135deg,#1d4ed8,#3b82f6)`
+    joinBtn.style.boxShadow = `0 4px 16px #3b82f650`
+    joinBtn.onclick = () => joinSession(g.id, session.room_id)
+  } else {
+    joinBtn.style.display = 'none'
+  }
+
   if (!tvMode) {
-    document.getElementById('rvHint').textContent = '◀▶ navegar · A jogar · Guide menu · B sair'
+    document.getElementById('rvHint').textContent = session
+      ? '◀▶ navegar · A jogar · Y jogar junto · Guide menu · B sair'
+      : '◀▶ navegar · A jogar · Guide menu · B sair'
   } else {
     document.getElementById('rvHint').textContent = '◀▶ navegar · A jogar · Guide menu'
   }
+}
+
+function joinSession(gameId, roomId) {
+  sessionStorage.setItem('rc_from_rv', '1')
+  sessionStorage.setItem('rc_rv_sys', sysIdx)
+  sessionStorage.setItem('rc_rv_game', gameIdx)
+  window.location.href = `/player.html?id=${gameId}&join=${roomId}`
 }
 
 function update() {
@@ -504,6 +542,11 @@ function setupGamepad() {
     if (press && btn === BTN.LB)   { sysIdx = (sysIdx - 1 + systems.length) % systems.length; gameIdx = 0; navStart = 0; navPaged = false; update() }
     if (press && btn === BTN.RB)   { sysIdx = (sysIdx + 1) % systems.length; gameIdx = 0; navStart = 0; navPaged = false; update() }
     if (press && btn === BTN.A)    launchGame()
+    if (press && btn === BTN.Y) {
+      const g = getCurrentGame()
+      const sess = g ? sessionsMap[g.id] : null
+      if (sess) joinSession(g.id, sess.room_id)
+    }
     if (press && btn === BTN.GUIDE) openMenu()
     if (press && btn === BTN.B && !tvMode) tryExit()
   })

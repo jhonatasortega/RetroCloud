@@ -51,6 +51,12 @@ export const api = {
   saveState: (id, b64)       => req('POST', `/games/${id}/save`, { save_data: b64 }),
   loadState: (id)            => req('GET',  `/games/${id}/save`),
 
+  // Netplay
+  createSession:    (id)     => req('POST',   `/games/${id}/netplay`),
+  getSession:       (id)     => req('GET',    `/games/${id}/netplay`),
+  endSession:       (id)     => req('DELETE', `/games/${id}/netplay`),
+  getActiveSessions:()       => req('GET',    '/games/netplay/active'),
+
   // Admin
   adminUsers:      ()        => req('GET',    '/admin/users'),
   adminCreateUser: (data)    => req('POST',   '/admin/users', data),
