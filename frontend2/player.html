@@ -96,12 +96,9 @@
   <!-- Menu do jogo -->
   <div class="game-menu-overlay hidden" id="gameMenuOverlay">
     <div class="game-menu">
-      <div class="game-menu-header" style="display:flex;align-items:center;justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span>🎮</span>
-          <span class="title" id="menuGameTitle">—</span>
-        </div>
-        <button class="btn btn-secondary btn-sm" id="sessionBtn" style="font-size:11px;white-space:nowrap">🌐 Criar sessão</button>
+      <div class="game-menu-header">
+        <span>🎮</span>
+        <span class="title" id="menuGameTitle">—</span>
       </div>
       <div id="gameMenuItems"></div>
       <div class="game-menu-hint">↑↓ · A confirmar · B / Guide fechar</div>
@@ -244,33 +241,18 @@ document.head.appendChild(st)
 
 // ── Sessão netplay ─────────────────────────────────────────────────────────
 let activeSession = null
-const sessionBtn = document.getElementById('sessionBtn')
 
-async function updateSessionBtn() {
-  if (activeSession) {
-    sessionBtn.textContent = '✓ Sessão ativa'
-    sessionBtn.style.background = '#15803d'
-    sessionBtn.style.color = '#fff'
-    sessionBtn.title = `Room: ${activeSession.room_id}`
-  } else {
-    sessionBtn.textContent = '🌐 Criar sessão'
-    sessionBtn.style.background = ''
-    sessionBtn.style.color = ''
-    sessionBtn.title = ''
-  }
-}
-
-sessionBtn.addEventListener('click', async () => {
+async function toggleSession() {
   if (activeSession) {
     await api.endSession(id).catch(() => {})
     activeSession = null
   } else {
     try {
       activeSession = await api.createSession(id)
-    } catch(e) { console.warn('Erro ao criar sessão', e); return }
+    } catch(e) { console.warn('Erro ao criar sessão', e) }
   }
-  updateSessionBtn()
-})
+  renderMenu()
+}
 
 window.addEventListener('pagehide', () => { if (activeSession) api.endSession(id) })
 
@@ -376,42 +358,45 @@ document.getElementById('playerWrap').addEventListener('mousemove', () => {
 })
 
 // ── Menu ──────────────────────────────────────────────────────────────────
-const MENU_ITEMS = [
-  { icon:'▶', label:'Continuar',         action: closeMenu },
-  { icon:'⊞', label:'Tela cheia',        action: () => { closeMenu(); toggleFs() } },
-  { icon:'💾', label:'Salvar estado',     action: () => { window.EJS_emulator?.saveState?.(); closeMenu() } },
-  { icon:'📂', label:'Carregar estado',   action: () => { window.EJS_emulator?.loadState?.(); closeMenu() } },
-  { icon:'🌐', label:'Jogar junto (Netplay)', action: () => { window.EJS_emulator?.openNetplay?.(); closeMenu() } },
-  { icon:'🎮', label:'Configurar controle',  action: () => { closeMenu(); openRemap() } },
-  { icon:'🔄', label:'Reiniciar',         action: () => { window.EJS_emulator?.restart?.(); closeMenu() } },
-  { icon:'←',  label:'Sair do jogo',     action: goBack },
-]
+function getMenuItems() {
+  return [
+    { icon:'▶', label:'Continuar',         action: closeMenu },
+    { icon:'⊞', label:'Tela cheia',        action: () => { closeMenu(); toggleFs() } },
+    { icon:'💾', label:'Salvar estado',     action: () => { window.EJS_emulator?.saveState?.(); closeMenu() } },
+    { icon:'📂', label:'Carregar estado',   action: () => { window.EJS_emulator?.loadState?.(); closeMenu() } },
+    { icon: activeSession ? '🔴' : '🌐',
+      label: activeSession ? 'Encerrar sessão' : 'Criar sessão',
+      action: () => { toggleSession() }
+    },
+    { icon:'🎮', label:'Configurar controle',  action: () => { closeMenu(); openRemap() } },
+    { icon:'🔄', label:'Reiniciar',         action: () => { window.EJS_emulator?.restart?.(); closeMenu() } },
+    { icon:'←',  label:'Sair do jogo',     action: goBack },
+  ]
+}
 
 let selectedItem = 0
 const menuOverlay = document.getElementById('gameMenuOverlay')
 const itemsEl     = document.getElementById('gameMenuItems')
 
-itemsEl.innerHTML = MENU_ITEMS.map((item, i) =>
-  `<button class="game-menu-item${i===0?' selected':''}" data-idx="${i}">
-    <span>${item.icon}</span><span>${item.label}</span>
-  </button>`
-).join('')
-
-itemsEl.addEventListener('click', e => {
-  const btn = e.target.closest('.game-menu-item')
-  if (btn) MENU_ITEMS[+btn.dataset.idx]?.action()
-})
-itemsEl.addEventListener('mouseover', e => {
-  const btn = e.target.closest('.game-menu-item')
-  if (btn) selectMenuItem(+btn.dataset.idx)
-})
+function renderMenu() {
+  const items = getMenuItems()
+  itemsEl.innerHTML = items.map((item, i) =>
+    `<button class="game-menu-item${i===selectedItem?' selected':''}" data-idx="${i}">
+      <span>${item.icon}</span><span>${item.label}</span>
+    </button>`
+  ).join('')
+  itemsEl.querySelectorAll('.game-menu-item').forEach(b => {
+    b.addEventListener('click', () => getMenuItems()[+b.dataset.idx]?.action())
+    b.addEventListener('mouseover', () => selectMenuItem(+b.dataset.idx))
+  })
+}
 
 function selectMenuItem(i) {
   selectedItem = i
   itemsEl.querySelectorAll('.game-menu-item').forEach((b, idx) =>
     b.classList.toggle('selected', idx === i))
 }
-function openMenu()  { menuOverlay.classList.remove('hidden'); selectMenuItem(0) }
+function openMenu()  { selectedItem = 0; renderMenu(); menuOverlay.classList.remove('hidden') }
 function closeMenu() { menuOverlay.classList.add('hidden') }
 
 document.getElementById('menuBtn').addEventListener('click', openMenu)
@@ -419,8 +404,8 @@ document.getElementById('menuBtn').addEventListener('click', openMenu)
 document.addEventListener('keydown', e => {
   if (!menuOverlay.classList.contains('hidden')) {
     if (e.key === 'ArrowUp')   selectMenuItem(Math.max(0, selectedItem-1))
-    if (e.key === 'ArrowDown') selectMenuItem(Math.min(MENU_ITEMS.length-1, selectedItem+1))
-    if (e.key === 'Enter')     MENU_ITEMS[selectedItem]?.action()
+    if (e.key === 'ArrowDown') selectMenuItem(Math.min(getMenuItems().length-1, selectedItem+1))
+    if (e.key === 'Enter')     getMenuItems()[selectedItem]?.action()
     if (e.key === 'Escape')    closeMenu()
   }
 })
@@ -562,8 +547,8 @@ onGamepad((btn, type) => {
   }
   if (!menuOverlay.classList.contains('hidden')) {
     if (btn === BTN.UP)                     selectMenuItem(Math.max(0, selectedItem-1))
-    if (btn === BTN.DOWN)                   selectMenuItem(Math.min(MENU_ITEMS.length-1, selectedItem+1))
-    if (btn === BTN.A)                      MENU_ITEMS[selectedItem]?.action()
+    if (btn === BTN.DOWN)                   selectMenuItem(Math.min(getMenuItems().length-1, selectedItem+1))
+    if (btn === BTN.A)                      getMenuItems()[selectedItem]?.action()
     if (btn === BTN.B || btn === BTN.GUIDE) closeMenu()
   } else {
     if (btn === BTN.GUIDE) openMenu()

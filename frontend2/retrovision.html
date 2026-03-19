@@ -247,10 +247,11 @@ function renderCarousel() {
   for (let i = safe-RANGE; i <= safe+RANGE; i++) {
     if (i >= 0 && i < filtered.length) visible.push(i)
   }
+  const visibleIds = visible.map(i => filtered[i].id)
 
-  // Remove cards que saíram da janela
+  // Remove cards que saíram da janela ou são de outro sistema
   wrap.querySelectorAll('.rv-card').forEach(el => {
-    if (!visible.includes(+el.dataset.idx)) el.remove()
+    if (!visibleIds.includes(+el.dataset.id)) el.remove()
   })
 
   // Atualiza ou cria cada card
@@ -271,12 +272,13 @@ function renderCarousel() {
       : '0 8px 30px rgba(0,0,0,0.7)'
     const border = center ? '2px solid ' + meta.glow + '50' : '1px solid #ffffff08'
 
-    let card = wrap.querySelector('.rv-card[data-idx="' + i + '"]')
+    let card = wrap.querySelector('.rv-card[data-id="' + g.id + '"]')
 
     if (!card) {
       // Cria novo card
       card = document.createElement('div')
       card.className = 'rv-card'
+      card.dataset.id  = g.id
       card.dataset.idx = i
 
       const inner = document.createElement('div')
@@ -307,6 +309,9 @@ function renderCarousel() {
       })
       wrap.appendChild(card)
     }
+
+    // Sempre atualiza idx (posição pode mudar ao navegar)
+    card.dataset.idx = i
 
     // Atualiza transform — CSS transition anima automaticamente
     card.style.transform = 'translateX(' + tx + 'px) translateZ(' + tz + 'px) rotateY(' + ry + 'deg) scale(' + scale + ')'
