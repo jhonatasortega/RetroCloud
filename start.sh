@@ -2,9 +2,9 @@
 set -e
 
 echo ""
-echo "╔══════════════════════════════════════╗"
-echo "║        RetroCloud - Iniciando        ║"
-echo "╚══════════════════════════════════════╝"
+echo "+======================================+"
+echo "|        RetroCloud - Iniciando        |"
+echo "+======================================+"
 echo ""
 
 if [ ! -f ".env" ]; then
@@ -14,29 +14,36 @@ if [ ! -f ".env" ]; then
   echo "[!] .env criado com SECRET_KEY gerada automaticamente."
 fi
 
-# Cria estrutura de pastas e garante permissões para o nginx ler as ROMs
+# Cria estrutura de pastas
 mkdir -p emulatorjs/roms/{ps1,snes,n64,gba,gbc,gb,megadrive,nes}
 mkdir -p emulatorjs/saves
 mkdir -p backend/static/uploads/{thumbs,roms}
 chmod -R 755 emulatorjs/roms
 chmod -R 755 emulatorjs/saves
 
+# Garante que o database.db existe como ARQUIVO antes do docker compose
+# Sem isso o Docker cria uma pasta no lugar e o bind mount quebra
+if [ ! -f "backend/database.db" ]; then
+  touch backend/database.db
+  echo "[!] backend/database.db criado."
+fi
+
 echo "[1/2] Subindo containers..."
 docker compose up -d --build
 
 echo ""
-echo "[2/2] Aguardando inicialização (10s)..."
+echo "[2/2] Aguardando inicializacao (10s)..."
 sleep 10
 docker compose ps
 
 echo ""
-echo "╔══════════════════════════════════════╗"
-echo "║         RetroCloud rodando!          ║"
-echo "╠══════════════════════════════════════╣"
-echo "║  Acesse: http://$(hostname -I | awk '{print $1}')"
-echo "║  Login:  admin@retrocloud.local      ║"
-echo "║  Senha:  admin                       ║"
-echo "╚══════════════════════════════════════╝"
+echo "+======================================+"
+echo "|         RetroCloud rodando!          |"
+echo "+--------------------------------------+"
+echo "|  Acesse: http://$(hostname -I | awk '{print $1}')"
+echo "|  Login:  admin@retrocloud.local      |"
+echo "|  Senha:  admin                       |"
+echo "+======================================+"
 echo ""
 echo "IMPORTANTE: Coloque suas ROMs em:"
 echo "  ./emulatorjs/roms/snes/  (SNES)"

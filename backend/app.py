@@ -35,7 +35,7 @@ def create_app():
         os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], folder), exist_ok=True)
 
     with app.app_context():
-        db.create_all()
+        db.create_all(checkfirst=True)
         # WAL mode — muito mais rápido para leituras concorrentes no Pi 3
         try:
             db.engine.execute('PRAGMA journal_mode=WAL')

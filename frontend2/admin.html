@@ -311,7 +311,7 @@ async function renderRoms(el) {
     let ok = 0, fail = 0
     for (const f of files) {
       const fd = new FormData()
-      fd.append('rom', f); fd.append('sistema', sys)
+    fd.append('rom', f); fd.append('sistema', sys); fd.append('nome', f.name)
       try { await api.uploadRom(fd); ok++ }
       catch { fail++ }
     }
