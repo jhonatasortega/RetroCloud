@@ -120,9 +120,9 @@ def fetch_thumb(rom, upload_folder, cfg, nome_override=None):
     nome_override: nome alternativo enviado pelo usuário.
     Retorna caminho relativo '/static/...' ou None.
     """
-    nome    = nome_override or rom.nome or \
-              clean_name(os.path.splitext(os.path.basename(rom.caminho or ''))[0])
-    sistema = (rom.sistema or '').lower()
+    nome_raw = nome_override or rom.nome or os.path.basename(rom.caminho or '')
+    nome     = clean_name(nome_raw)
+    sistema  = (rom.sistema or '').lower()
     save_path = os.path.join(upload_folder, 'thumbs', f'rom_{rom.id}.png')
     thumb_rel = f'/static/uploads/thumbs/rom_{rom.id}.png'
 
