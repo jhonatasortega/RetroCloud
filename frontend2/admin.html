@@ -263,17 +263,35 @@ async function renderRoms(el) {
     renderTable()
   })
 
+  async function runFetchAllWithProgress(btn, originalLabel) {
+    btn.disabled = true
+    try {
+      const r = await api.fetchAllThumbs()
+      if (!r.job_id) { toastOk(r.message || 'Já tem capa em tudo!'); return }
+      const { job_id, total } = r
+      btn.textContent = `0 / ${total}`
+      await new Promise((resolve, reject) => {
+        const iv = setInterval(async () => {
+          try {
+            const s = await api.jobStatus(job_id)
+            btn.textContent = `${s.done} / ${s.total}`
+            if (!s.running) {
+              clearInterval(iv)
+              toastOk(`${s.ok} capas encontradas, ${s.falhas.length} falhas`)
+              loadTab('roms')
+              resolve()
+            }
+          } catch(e) { clearInterval(iv); reject(e) }
+        }, 1500)
+      })
+    } catch(e) { toastErr(e.message) }
+    btn.disabled = false; btn.textContent = originalLabel
+  }
+
   // Fetch all thumbs sem capa
   el.querySelector('#fetchAllBtn').addEventListener('click', async () => {
     if (!confirm('Buscar capas para ROMs sem capa? Pode demorar.')) return
-    const btn = el.querySelector('#fetchAllBtn')
-    btn.disabled = true; btn.textContent = 'Buscando...'
-    try {
-      const r = await api.fetchAllThumbs()
-      toastOk(`${r.atualizadas} capas encontradas, ${r.falhas} falhas`)
-      loadTab('roms')
-    } catch(e) { toastErr(e.message) }
-    btn.disabled = false; btn.textContent = '🔍 Buscar capas sem thumb'
+    await runFetchAllWithProgress(el.querySelector('#fetchAllBtn'), '🔍 Buscar capas sem thumb')
   })
 
   // Limpar thumbs do sistema ativo e rebuscar
@@ -286,13 +304,11 @@ async function renderRoms(el) {
     try {
       const r = await api.clearThumbs(sys)
       toastOk(r.message)
-      // Rebusca automaticamente
-      btn.textContent = 'Rebuscando...'
-      const r2 = await api.fetchAllThumbs()
-      toastOk(`${r2.atualizadas} novas capas encontradas`)
-      loadTab('roms')
-    } catch(e) { toastErr(e.message) }
-    btn.disabled = false; btn.textContent = '🗑 Limpar thumbs do sistema'
+      await runFetchAllWithProgress(btn, '🗑 Limpar thumbs do sistema')
+    } catch(e) {
+      toastErr(e.message)
+      btn.disabled = false; btn.textContent = '🗑 Limpar thumbs do sistema'
+    }
   })
 
   // Upload

@@ -2,8 +2,12 @@ from flask import Blueprint, request, jsonify
 from models import db, Rom
 from utils.jwt_helper import admin_required
 from utils.thumb_scraper import fetch_thumb, clean_name
+import threading, uuid
 
 scraper_bp = Blueprint('scraper', __name__)
+
+# job_id -> { total, done, ok, falhas: [], running: bool }
+_jobs = {}
 
 
 def _get_cfg(app):
@@ -46,28 +50,52 @@ def fetch_thumb_route(current_user, rom_id):
 @scraper_bp.route('/roms/fetch-all-thumbs', methods=['POST'])
 @admin_required
 def fetch_all_thumbs(current_user):
-    """Busca capas para todas as ROMs sem capa."""
+    """Inicia busca de capas em background e retorna job_id para polling."""
     from flask import current_app
+    import time
+
     roms = Rom.query.filter((Rom.thumb == None) | (Rom.thumb == '')).all()
     if not roms:
-        return jsonify({'message': 'Todas as ROMs já têm capa!', 'atualizadas': 0}), 200
+        return jsonify({'message': 'Todas as ROMs já têm capa!', 'atualizadas': 0, 'job_id': None}), 200
 
-    cfg = _get_cfg(current_app)
+    job_id = uuid.uuid4().hex
+    _jobs[job_id] = {'total': len(roms), 'done': 0, 'ok': 0, 'falhas': [], 'running': True}
+
+    cfg        = _get_cfg(current_app)
     upload_folder = current_app.config['UPLOAD_FOLDER']
-    ok, falhas = 0, []
+    flask_app  = current_app._get_current_object()
+    rom_ids    = [r.id for r in roms]
 
-    for rom in roms:
-        import time
-        path = fetch_thumb(rom, upload_folder, cfg)
-        if path:
-            rom.thumb = path
-            ok += 1
-        else:
-            falhas.append(rom.nome)
-        time.sleep(0.5)
+    def worker():
+        with flask_app.app_context():
+            for rom_id in rom_ids:
+                rom = Rom.query.get(rom_id)
+                if not rom:
+                    _jobs[job_id]['done'] += 1
+                    continue
+                path = fetch_thumb(rom, upload_folder, cfg)
+                if path:
+                    rom.thumb = path
+                    db.session.commit()
+                    _jobs[job_id]['ok'] += 1
+                else:
+                    _jobs[job_id]['falhas'].append(rom.nome)
+                _jobs[job_id]['done'] += 1
+                time.sleep(0.3)
+        _jobs[job_id]['running'] = False
 
-    db.session.commit()
-    return jsonify({'atualizadas': ok, 'falhas': len(falhas), 'detalhes': falhas[:20]}), 200
+    threading.Thread(target=worker, daemon=True).start()
+    return jsonify({'job_id': job_id, 'total': len(roms)}), 202
+
+
+@scraper_bp.route('/jobs/<job_id>', methods=['GET'])
+@admin_required
+def job_status(current_user, job_id):
+    """Retorna progresso de um job de scraping."""
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify({'message': 'Job não encontrado'}), 404
+    return jsonify(job), 200
 
 
 @scraper_bp.route('/roms/clear-thumbs', methods=['POST'])

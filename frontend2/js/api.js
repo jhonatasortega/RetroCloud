@@ -71,6 +71,7 @@ export const api = {
   fetchThumb:      (id)          => req('POST', `/scraper/rom/${id}/fetch-thumb`),
   fetchThumbNome:  (id, nome)    => req('POST', `/scraper/rom/${id}/fetch-thumb`, { nome }),
   fetchAllThumbs:  ()            => req('POST', '/scraper/roms/fetch-all-thumbs'),
+  jobStatus:       (jobId)       => req('GET',  `/scraper/jobs/${jobId}`),
   clearThumbs: (sistema)     => req('POST', '/scraper/roms/clear-thumbs', sistema ? { sistema } : {}),
   uploadThumb: (id, form)    => req('POST', `/admin/roms/${id}/thumb`, form, true),
 
