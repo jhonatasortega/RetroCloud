@@ -23,8 +23,8 @@ async function req(method, path, body, isForm = false) {
 
   if (res.status === 401) {
     setToken(null)
-    window.location.href = '/index.html'
-    return
+    window.location.href = '/'
+    throw new Error('Sessão expirada')
   }
 
   const data = await res.json().catch(() => ({}))
@@ -81,6 +81,10 @@ export const api = {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
-    }).then(r => r.json())
+    }).then(async r => {
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.message || `HTTP ${r.status}`)
+      return data
+    })
   },
 }

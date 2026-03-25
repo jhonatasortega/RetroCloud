@@ -68,7 +68,7 @@ async function loadTab(tab) {
   if (tab === 'users')  await renderUsers(el)
   if (tab === 'config') await renderConfig(el)
 }
-
+ 
 // ── ROMs ──
 async function renderRoms(el) {
   const data = await api.games().catch(() => ({ games: [] }))
@@ -344,7 +344,7 @@ async function renderRoms(el) {
         ok++
       } catch(e) {
         fail++
-        erros.push(f.name)
+        erros.push(`${f.name} (${e.message})`)
       }
       const done = ok + fail
       fill.style.width = Math.round(done / total * 100) + '%'
