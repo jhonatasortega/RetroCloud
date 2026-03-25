@@ -158,9 +158,17 @@ def load_game(current_user, rom_id):
 @games_bp.route('/netplay/active', methods=['GET'])
 @token_required
 def list_netplay_sessions(current_user):
-    """Lista todas as sessões de netplay ativas."""
+    """Lista todas as sessões de netplay ativas com info do jogo."""
     sessions = NetplaySession.query.all()
-    return jsonify({'sessions': [s.to_dict() for s in sessions]}), 200
+    result = []
+    for s in sessions:
+        d = s.to_dict()
+        if s.rom:
+            d['rom_nome']    = s.rom.nome
+            d['rom_sistema'] = s.rom.sistema
+            d['rom_thumb']   = s.rom.thumb
+        result.append(d)
+    return jsonify({'sessions': result}), 200
 
 
 @games_bp.route('/<int:rom_id>/netplay', methods=['POST'])
