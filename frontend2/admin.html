@@ -17,6 +17,18 @@
   </div>
 </nav>
 
+<!-- Barra de progresso de upload (fixa, fora do tab content) -->
+<div id="uploadProgressBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#1a1a2e;border-top:1px solid #333;padding:10px 20px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="color:#a0aec0;font-size:13px;white-space:nowrap" id="uploadProgressLabel">Enviando...</span>
+    <div style="flex:1;background:#333;border-radius:4px;height:8px;overflow:hidden">
+      <div id="uploadProgressFill" style="height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);width:0%;transition:width 0.2s"></div>
+    </div>
+    <span style="color:#a0aec0;font-size:12px;min-width:60px;text-align:right" id="uploadProgressCount">0/0</span>
+  </div>
+  <div id="uploadProgressErrors" style="color:#f87171;font-size:11px;margin-top:4px"></div>
+</div>
+
 <div class="admin-layout">
   <div class="admin-sidebar">
     <button class="admin-nav-item active" data-tab="roms">🎮 ROMs</button>
@@ -302,26 +314,50 @@ async function renderRoms(el) {
     })
   })
 
+  
   el.querySelector('#doUpload').addEventListener('click', async () => {
     const files = el.querySelector('#uploadFile').files
     const sys   = el.querySelector('#uploadSys').value
     if (!files.length) return
-    const btn = el.querySelector('#doUpload')
-    btn.disabled = true; btn.textContent = 'Enviando...'
+
+    // Fecha modal e exibe progress bar
+    uploadModal.style.display = 'none'
+    const bar     = document.getElementById('uploadProgressBar')
+    const fill    = document.getElementById('uploadProgressFill')
+    const label   = document.getElementById('uploadProgressLabel')
+    const count   = document.getElementById('uploadProgressCount')
+    const errDiv  = document.getElementById('uploadProgressErrors')
+    bar.style.display = ''
+    errDiv.textContent = ''
+
     let ok = 0, fail = 0
+    const total = files.length
+    const erros = []
+
     for (const f of files) {
       const fd = new FormData()
-    fd.append('rom', f); fd.append('sistema', sys); fd.append('nome', f.name)
-      try { await api.uploadRom(fd); ok++ }
-      catch { fail++ }
+      fd.append('rom', f)
+      fd.append('sistema', sys)
+      fd.append('nome', f.name)
+      try {
+        await api.uploadRom(fd)
+        ok++
+      } catch(e) {
+        fail++
+        erros.push(f.name)
+      }
+      const done = ok + fail
+      fill.style.width = Math.round(done / total * 100) + '%'
+      count.textContent = `${done}/${total}`
+      label.textContent = `Enviando ${f.name}...`
     }
-    btn.disabled = false; btn.textContent = 'Enviar'
-    uploadModal.style.display = 'none'
-    if (ok) toastOk(`${ok} ROM(s) enviada(s)`)
-    if (fail) toastErr(`${fail} falha(s)`)
+
+    // Fim
+    bar.style.display = 'none'
+    if (ok)   toastOk(`✓ ${ok} ROM(s) importada(s)`)
+    if (fail) toastErr(`✗ ${fail} falharam: ${erros.slice(0,3).join(', ')}${erros.length>3?' ...':''}`)
     loadTab('roms')
   })
-}
 
 // ── Usuários ──
 async function renderUsers(el) {

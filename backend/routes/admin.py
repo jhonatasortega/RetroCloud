@@ -7,7 +7,13 @@ from datetime import datetime
 
 admin_bp = Blueprint('admin', __name__)
 
-ALLOWED_ROM_EXTENSIONS = {'nes', 'snes', 'smc', 'gba', 'gbc', 'gb', 'n64', 'z64', 'iso', 'bin', 'cue'}
+ALLOWED_ROM_EXTENSIONS = {
+    'nes', 'snes', 'smc', 'sfc',               # Nintendo
+    'gba', 'gbc', 'gb', 'nds',                  # Game Boy
+    'n64', 'z64', 'v64',                         # N64
+    'iso', 'bin', 'cue', 'img', 'mdf', 'mds',   # Disco (PS1, etc.)
+    'pce', 'md', 'gen', 'sms', 'gg',            # Outros
+}
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
 def allowed_file(filename, allowed_extensions):
