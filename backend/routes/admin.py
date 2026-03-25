@@ -13,6 +13,7 @@ ALLOWED_ROM_EXTENSIONS = {
     'n64', 'z64', 'v64',                         # N64
     'iso', 'bin', 'cue', 'img', 'mdf', 'mds',   # Disco (PS1, etc.)
     'pce', 'md', 'gen', 'sms', 'gg',            # Outros
+    'zip', 'rom',                                # Compactado / genérico
 }
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 

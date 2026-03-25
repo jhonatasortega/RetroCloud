@@ -320,6 +320,16 @@ async function renderRoms(el) {
     const sys   = el.querySelector('#uploadSys').value
     if (!files.length) return
 
+    // Filtra só arquivos ROM válidos (ignora .DS_Store, .ini, etc.)
+    const ROM_EXTS = new Set(['nes','snes','smc','sfc','gba','gbc','gb','nds',
+                              'n64','z64','v64','iso','bin','cue','img','mdf','mds',
+                              'pce','md','gen','sms','gg','rom','zip'])
+    const validFiles = Array.from(files).filter(f => {
+      const ext = f.name.split('.').pop().toLowerCase()
+      return ROM_EXTS.has(ext)
+    })
+    if (!validFiles.length) { toastErr('Nenhum arquivo ROM válido encontrado'); return }
+
     // Fecha modal e exibe progress bar
     uploadModal.style.display = 'none'
     const bar     = document.getElementById('uploadProgressBar')
@@ -331,10 +341,10 @@ async function renderRoms(el) {
     errDiv.textContent = ''
 
     let ok = 0, fail = 0
-    const total = files.length
+    const total = validFiles.length
     const erros = []
 
-    for (const f of files) {
+    for (const f of validFiles) {
       const fd = new FormData()
       fd.append('rom', f)
       fd.append('sistema', sys)
