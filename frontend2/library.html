@@ -28,6 +28,9 @@
   </div>
 </div>
 
+<!-- Sessões ativas -->
+<div id="activeSessions" style="display:none;padding:0 20px 4px;max-width:1200px;margin:0 auto"></div>
+
 <div class="container">
   <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
     <p class="text-muted text-sm" id="gameCount">Carregando...</p>
@@ -88,10 +91,51 @@ document.getElementById('searchInput').addEventListener('input', e => {
   searchTimer = setTimeout(() => { page = 1; applyFilter() }, 250)
 })
 
-// Carrega jogos
-const gData = await api.games().catch(() => ({ games: [] }))
+// Carrega jogos e sessões ativas em paralelo
+const [gData, sessData] = await Promise.all([
+  api.games().catch(() => ({ games: [] })),
+  api.getActiveSessions().catch(() => ({ sessions: [] })),
+])
 allGames = gData.games || []
+renderSessions(sessData.sessions || [])
 applyFilter()
+setInterval(async () => {
+  const s = await api.getActiveSessions().catch(() => ({ sessions: [] }))
+  renderSessions(s.sessions || [])
+}, 30000)
+
+function renderSessions(sessions) {
+  const el = document.getElementById('activeSessions')
+  if (!sessions.length) { el.style.display = 'none'; return }
+  el.style.display = ''
+  el.innerHTML = `
+    <div style="margin-bottom:10px">
+      <span style="font-size:13px;font-weight:600;color:var(--accent)">🎮 Jogando agora</span>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      ${sessions.map(s => `
+        <a href="/player.html?id=${s.rom_id}&join=${encodeURIComponent(s.room_id)}"
+           style="display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);
+                  border-radius:10px;padding:10px 14px;text-decoration:none;min-width:220px;
+                  transition:border-color 0.15s;cursor:pointer"
+           onmouseover="this.style.borderColor='var(--accent)'"
+           onmouseout="this.style.borderColor='var(--border)'">
+          <div style="width:44px;height:44px;border-radius:6px;overflow:hidden;flex-shrink:0;background:#222;display:flex;align-items:center;justify-content:center">
+            ${s.rom_thumb
+              ? `<img src="${s.rom_thumb}" style="width:100%;height:100%;object-fit:cover">`
+              : `<span style="font-size:20px">🎮</span>`}
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(s.rom_nome||'Jogo')}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(s.host_nome)} está jogando</div>
+            <div style="font-size:11px;color:var(--accent);margin-top:2px">Jogar junto →</div>
+          </div>
+        </a>
+      `).join('')}
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:14px 0 0">
+  `
+}
 
 function applyFilter() {
   const q = document.getElementById('searchInput').value.toLowerCase().trim()
